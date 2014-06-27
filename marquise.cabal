@@ -1,0 +1,104 @@
+cabal-version:       >= 1.10
+name:                marquise
+version:             2.0.0
+synopsis:            Client library for Vaultaire
+license:             BSD3
+author:              Anchor Engineering <engineering@anchor.com.au>
+maintainer:          Anchor Engineering <engineering@anchor.com.au>
+copyright:           © 2013-2014 Anchor Systems, Pty Ltd and Others
+category:            Other
+tested-with:         GHC == 7.8.2
+stability:           experimental
+
+build-type:          Simple
+
+source-repository    head
+  type:              git
+  location:          git@github.com:anchor/marquise.git
+
+
+library
+  hs-source-dirs:    lib
+  default-language:  Haskell2010
+
+  exposed-modules:   Marquise.Client,
+                     Marquise.Classes,
+                     Marquise.Types,
+                     Marquise.Server
+
+  other-modules:     Marquise.IO,
+                     Marquise.IO.FFI,
+                     Marquise.IO.Writer,
+                     Marquise.IO.Reader,
+                     Marquise.IO.Contents,
+                     Marquise.IO.SpoolFile,
+                     Marquise.IO.Connection
+
+  build-depends:     base >=3 && <5,
+                     vaultaire-common,
+                     bytestring,
+                     text,
+                     containers,
+                     unordered-containers,
+                     attoparsec,
+                     mtl,
+                     unix,
+                     pipes,
+                     siphash,
+                     async,
+                     hslogger,
+                     blaze-builder,
+                     hashable,
+                     packer,
+                     filepath,
+                     directory,
+                     semigroups,
+                     cryptohash,
+                     zeromq4-haskell
+                                        
+
+  ghc-options:       -O2
+                     -threaded
+                     -Wall
+                     -Wwarn
+                     -fwarn-tabs
+
+  ghc-prof-options:  -fprof-auto
+
+
+executable marquised
+  hs-source-dirs:    src
+  main-is:           MarquiseD.hs
+  default-language:  Haskell2010
+
+  build-depends:     base >=3 && <5,
+                     bytestring,
+                     hslogger,
+                     optparse-applicative,
+                     marquise,
+                     vaultaire-common
+
+  ghc-options:       -O2
+                     -threaded
+                     -Wall
+                     -Wwarn
+                     -fwarn-tabs
+
+  ghc-prof-options:  -fprof-auto
+
+test-suite           client-test
+  hs-source-dirs:    tests
+  main-is:           Client.hs
+  type:              exitcode-stdio-1.0
+  default-language:  Haskell2010
+
+  build-depends:     base >=3 && <5,
+                     hspec,
+                     bytestring,
+                     marquise
+
+  ghc-options:       -O2
+                     -threaded
+                     -Wall
+                     -Wwarn
+                     -fwarn-tabs

@@ -31,6 +31,7 @@ module Marquise.Client
     -- Note: You may read MarquiseSpoolFileMonad m as IO.
     hashIdentifier,
     makeSpoolName,
+    makeOrigin,
 
     -- | * Contents daemon requests
     withContentsConnection,
@@ -58,7 +59,7 @@ module Marquise.Client
     SourceDict,
     SpoolName,
     SpoolFiles,
-    Address,
+    Address(..),
     Origin(..),
     TimeStamp(..),
     SimpleBurst(..),

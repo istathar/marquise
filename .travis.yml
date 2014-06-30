@@ -19,6 +19,8 @@ before_install:
   - sudo su -c "echo '/usr/local/lib' > /etc/ld.so.conf.d/local.conf"
   - sudo ldconfig
   - cd ..
+  - sudo mkdir -p /var/spool/marquise/
+  - sudo chown $USER /var/spool/marquise/
 
 install:
   - 'cabal-$CABALVER update'

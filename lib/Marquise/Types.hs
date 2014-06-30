@@ -19,6 +19,8 @@ module Marquise.Types
     SimplePoint(..),
     ExtendedPoint(..),
     InvalidSpoolName(..),
+    InvalidOrigin(..),
+    MarquiseTimeout(..),
 ) where
 
 import Control.Exception
@@ -54,3 +56,13 @@ data InvalidSpoolName = InvalidSpoolName
   deriving (Show, Typeable)
 
 instance Exception InvalidSpoolName
+
+data InvalidOrigin = InvalidOrigin
+  deriving (Show, Typeable)
+
+instance Exception InvalidOrigin
+
+data MarquiseTimeout = MarquiseTimeout
+  deriving (Show, Typeable)
+
+instance Exception MarquiseTimeout

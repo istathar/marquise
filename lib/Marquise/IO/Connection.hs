@@ -15,44 +15,50 @@ module Marquise.IO.Connection
     withConnection,
     send,
     recv,
+    SocketState(..),
 ) where
 
 import Control.Exception
 import Data.List.NonEmpty (fromList)
 import System.ZMQ4 hiding (send)
 import Vaultaire.Types
+import Marquise.Types
 
-withConnection :: String -> (Socket Dealer -> IO a) -> IO a
+data SocketState = SocketState (Socket Dealer) String
+
+withConnection :: String -> (SocketState -> IO a) -> IO a
 withConnection broker f =
     withContext $ \ctx ->
     withSocket ctx Dealer $ \s -> do
         connect s broker
-        f s
+        f (SocketState s broker)
 
 send :: WireFormat request
      => request
      -> Origin
-     -> Socket Dealer
+     -> SocketState
      -> IO ()
-send request (Origin origin) sock =
+send request (Origin origin) (SocketState sock _) =
     sendMulti sock (fromList [origin, toWire request])
 
 recv :: WireFormat response
-     => Socket Dealer
-     -> IO (Either SomeException response)
-recv sock = do
+     => SocketState
+     -> IO response
+recv (SocketState sock endpoint) = do
     poll_result <- poll timeout [Sock sock [In] Nothing]
     case poll_result of
         [[In]] -> do
             resp <- receiveMulti sock
             return $ case resp of
-                [msg] -> fromWire msg
-                _ -> Left $ SomeException $ userError "expected one msg"
-        [[]] ->
-            -- TODO: do something more intelligent here, we panic so that there
-            -- is no chance of receiving this 'lost' message after a retry,
-            -- which would be completely incorrect.
-            error "Timeout unrecoverable due to un-implemented reconnect"
+                [msg] -> either throw id $ fromWire msg
+                _ -> throw $ userError "expected one msg"
+        [[]] -> do
+            -- Timeout, reconnect the socket so that we can be sure that a late
+            -- response on the current connection isn't confused with a
+            -- response to a later request.
+            disconnect sock endpoint
+            connect sock endpoint
+            throw MarquiseTimeout
         _ -> error "Marquise.IO.Connection.recv: impossible"
   where
     timeout = 60000 -- milliseconds, 60s

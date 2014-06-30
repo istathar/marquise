@@ -110,15 +110,13 @@ hashIdentifier = Address . (`clearBit` 0) . unSipHash . hash iv
 requestUnique :: MarquiseContentsMonad m conn
                => Origin
                -> conn
-               -> m (Either SomeException Address)
+               -> m Address
 requestUnique origin conn =  do
     sendContentsRequest GenerateNewAddress origin conn
     response <- recvContentsResponse conn
-    return $ case response of
-        Right (RandomAddress addr) ->
-            Right addr
-        Right _ -> error "requestUnique: Invalid response"
-        Left e -> Left e
+    case response of
+        RandomAddress addr -> return addr
+        _ -> error "requestUnique: Invalid response"
 
 -- | Set the key,value tags as metadata on the given Address.
 updateSourceDict :: MarquiseContentsMonad m conn
@@ -126,14 +124,13 @@ updateSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> m (Either SomeException ())
+                 -> m ()
 updateSourceDict addr source_dict origin conn =  do
     sendContentsRequest (UpdateSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
-    return $ case response of
-        Right UpdateSuccess -> Right ()
-        Right _ -> error "requestSourceDictUpdate: Invalid response"
-        Left e -> Left e
+    case response of
+        UpdateSuccess -> return ()
+        _ -> error "requestSourceDictUpdate: Invalid response"
 
 -- | Remove the supplied key,value tags from metadata on the Address, if present.
 removeSourceDict :: MarquiseContentsMonad m conn
@@ -141,14 +138,13 @@ removeSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> m (Either SomeException ())
+                 -> m ()
 removeSourceDict addr source_dict origin conn = do
     sendContentsRequest (RemoveSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
-    return $ case response of
-        Right RemoveSuccess -> Right ()
-        Right _ -> error "requestSourceDictRemoval: Invalid response"
-        Left e -> Left e
+    case response of
+        RemoveSuccess -> return ()
+        _ -> error "requestSourceDictRemoval: Invalid response"
 
 enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
@@ -161,12 +157,11 @@ enumerateOrigin origin conn = do
     loop = do
         resp <- lift $ recvContentsResponse conn
         case resp of
-            Left e -> error $ show e
-            Right (ContentsListEntry addr dict) ->
+            ContentsListEntry addr dict ->
                 yield (addr, dict) >> loop
-            Right EndOfContentsList ->
+            EndOfContentsList ->
                 return ()
-            Right _ ->
+            _ ->
                 error "enumerateOrigin loop: Invalid response"
 
 readSimple :: MarquiseReaderMonad m conn
@@ -183,16 +178,14 @@ readSimple addr start end origin conn = do
     loop = do
         response <- lift $ recvReaderResponse conn
         case response of
-            Right (SimpleStream burst) ->
+            SimpleStream burst ->
                 yield burst >> loop
-            Right EndOfStream ->
+            EndOfStream ->
                 return ()
-            Right InvalidReadOrigin ->
+            InvalidReadOrigin ->
                 error "readSimple loop: Invalid origin"
-            Right _ ->
+            _ ->
                 error "readSimple loop: Invalid response"
-            Left e ->
-                throw e
 
 readExtended :: MarquiseReaderMonad m conn
              => Address
@@ -208,14 +201,12 @@ readExtended addr start end origin conn = do
     loop = do
         response <- lift $ recvReaderResponse conn
         case response of
-            Right (ExtendedStream burst) ->
+            ExtendedStream burst ->
                 yield burst >> loop
-            Right EndOfStream ->
+            EndOfStream ->
                 return ()
-            Right _ ->
+            _ ->
                 error "readSimple loop: Invalid response"
-            Left e ->
-                throw e
 
 decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint m ()
 decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)

@@ -17,9 +17,8 @@ module Marquise.IO.Reader
 
 import Marquise.Classes
 import Marquise.IO.Connection
-import System.ZMQ4 (Dealer, Socket)
 
-instance MarquiseReaderMonad IO (Socket Dealer) where
+instance MarquiseReaderMonad IO SocketState where
     withReaderConnection broker =
         withConnection ("tcp://" ++ broker ++ ":5570")
     sendReaderRequest = send

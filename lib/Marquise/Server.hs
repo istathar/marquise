@@ -19,13 +19,12 @@ module Marquise.Server
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
-import Control.Exception (throw, throwIO)
+import Control.Exception (throwIO)
 import Control.Monad.State
-import Data.Attoparsec (Parser)
-import qualified Data.Attoparsec as Parser
-import Data.Attoparsec.ByteString.Lazy (eitherResult, maybeResult, parse)
+import Data.Attoparsec.ByteString.Lazy (eitherResult, maybeResult, parse, Parser)
 import Data.Attoparsec.Combinator (eitherP, many')
 import qualified Data.ByteString.Char8 as S
+import qualified Data.Attoparsec.Lazy as Parser
 import qualified Data.ByteString.Lazy as L
 import Data.Maybe
 import Data.Packer
@@ -72,7 +71,7 @@ sendContents broker origin sn = forever $ do
     seal
   where
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) =
-        updateSourceDict addr source_dict origin conn >>= either throw return
+        updateSourceDict addr source_dict origin conn
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()
 parseContentsRequests bytes

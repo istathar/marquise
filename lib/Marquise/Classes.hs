@@ -18,7 +18,6 @@ module Marquise.Classes
     MarquiseContentsMonad(..),
 ) where
 
-import Control.Exception (SomeException)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LB
 import Marquise.Types
@@ -61,9 +60,9 @@ class Monad m => MarquiseWriterMonad m where
 class Monad m => MarquiseContentsMonad m connection | m -> connection where
     withContentsConnection :: String -> (connection -> m a) -> m a
     sendContentsRequest    :: ContentsOperation -> Origin -> connection -> m ()
-    recvContentsResponse   :: connection -> m (Either SomeException ContentsResponse)
+    recvContentsResponse   :: connection -> m ContentsResponse
 
 class Monad m => MarquiseReaderMonad m connection | m -> connection where
     withReaderConnection :: String -> (connection -> m a) -> m a
     sendReaderRequest    :: ReadRequest -> Origin -> connection -> m ()
-    recvReaderResponse   :: connection -> m (Either SomeException ReadStream)
+    recvReaderResponse   :: connection -> m ReadStream

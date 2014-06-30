@@ -21,13 +21,21 @@ import Control.Exception
 import Marquise.Classes
 import Marquise.IO.Connection
 import Vaultaire.Types
+import Marquise.Types
+import Data.ByteString(ByteString)
 
 instance MarquiseWriterMonad IO where
     transmitBytes broker origin bytes =
         withConnection ("tcp://" ++ broker ++ ":5560") $ \c -> do
-            send (PassThrough bytes) origin c
-            result <- recv c
+            result <- trySend origin bytes c
             case result of
-                Left e -> throw e
-                Right OnDisk -> return ()
-                Right InvalidWriteOrigin -> error "send: Invalid origin"
+                OnDisk -> return ()
+                InvalidWriteOrigin -> throw InvalidOrigin
+
+trySend :: Origin -> ByteString -> SocketState -> IO WriteResult
+trySend origin bytes c = do
+    send (PassThrough bytes) origin c
+    recv c `catch` retryOnTimeout
+  where
+    retryOnTimeout :: MarquiseTimeout -> IO WriteResult
+    retryOnTimeout _ = trySend origin bytes c

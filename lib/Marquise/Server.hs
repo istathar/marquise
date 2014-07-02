@@ -20,7 +20,7 @@ module Marquise.Server
 import Control.Applicative
 import Control.Concurrent (threadDelay)
 import Control.Exception (throwIO)
-import Control.Monad.State
+import Control.Monad.State hiding (lift, liftIO)
 import Data.Attoparsec.ByteString.Lazy (eitherResult, maybeResult, parse, Parser)
 import Data.Attoparsec.Combinator (eitherP, many')
 import qualified Data.ByteString.Char8 as S
@@ -35,6 +35,7 @@ import Marquise.Types (SpoolName (..))
 import Pipes
 import Vaultaire.Types
 import Vaultaire.Util
+import System.Log.Logger
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
@@ -44,34 +45,48 @@ marquiseServer broker origin user_sn =
     case makeSpoolName user_sn of
         Left e -> throwIO e
         Right sn -> do
+            debugM "marquiseServer" "Creating spool directories"
             createDirectories sn
+            debugM "marquiseServer" "Starting point transmitting thread"
             linkThread (sendPoints broker origin sn)
+            debugM "marquiseServer" "Starting contents transmitting thread"
             linkThread (sendContents broker origin sn)
             waitForever
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
 sendPoints broker origin sn = forever $ do
+    debugM "sendPoints" "Waiting for points"
     (bytes, seal) <- nextPoints sn
-    runEffect $ for (breakInToChunks bytes)
-                    (lift . transmitBytes broker origin)
+
+    debugM "sendPoints" "Got points, starting transmission pipe"
+    runEffect $ for (breakInToChunks bytes) sendChunk
+
+    debugM "sendPoints" "Transmission complete, cleaning up"
     seal
 
     threadDelay idleTime
+  where
+    sendChunk chunk = do
+        let size = show . S.length $ chunk
+        liftIO (debugM "sendPoints" $ "Sending chunk of " ++ size ++ " bytes")
+        lift (transmitBytes broker origin chunk)
 
-sendContents :: (MarquiseContentsMonad m conn, MarquiseSpoolFileMonad m)
-             => String
+sendContents :: String
              -> Origin
              -> SpoolName
-             -> m ()
+             -> IO ()
 sendContents broker origin sn = forever $ do
+    debugM "sendContents" "Waiting for contents"
     (bytes, seal) <- nextContents sn
+    debugM "sendContents" "Got contents, starting transmission pipe"
     withContentsConnection broker $ \c ->
         runEffect $ for (parseContentsRequests bytes)
-                        (lift . sendSourceDictUpdate c)
+                        (sendSourceDictUpdate c)
     seal
   where
-    sendSourceDictUpdate conn (ContentsRequest addr source_dict) =
-        updateSourceDict addr source_dict origin conn
+    sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
+        liftIO (debugM "sendContents" $ "Sending contents update for " ++ show addr)
+        lift (updateSourceDict addr source_dict origin conn)
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()
 parseContentsRequests bytes

@@ -68,7 +68,7 @@ module Marquise.Client
 
 import Control.Applicative
 import Control.Exception (SomeException (..), throw)
-import Control.Monad.Reader
+import Control.Monad.Reader hiding (lift)
 import Crypto.MAC.SipHash
 import Data.Bits
 import Data.ByteString (ByteString)

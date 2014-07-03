@@ -15,20 +15,25 @@ module Marquise.Server
 (
     marquiseServer,
     parseContentsRequests,
+    breakInToChunks,
 ) where
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
-import Control.Exception (throwIO)
-import Control.Monad.State hiding (lift, liftIO)
-import Data.Attoparsec.ByteString.Lazy (eitherResult, maybeResult, parse, Parser)
-import Data.Attoparsec.Combinator (eitherP, many')
+import Control.Exception (throwIO, throw)
+import Data.Attoparsec.ByteString.Lazy (Parser)
+import Data.Monoid
+import Data.Attoparsec.Combinator (eitherP)
 import qualified Data.ByteString.Char8 as S
+import qualified Pipes.ByteString as PB
+import Pipes.Attoparsec(parsed)
 import qualified Data.Attoparsec.Lazy as Parser
 import qualified Data.ByteString.Lazy as L
-import Data.Maybe
+import Pipes.Group(FreeT(..), FreeF(..))
+import qualified Pipes.Group as PG
+import Control.Monad
+import Data.ByteString.Builder(Builder, byteString, toLazyByteString)
 import Data.Packer
-import Data.Word (Word64)
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
 import Marquise.Types (SpoolName (..))
@@ -89,80 +94,115 @@ sendContents broker origin sn = forever $ do
         lift (updateSourceDict addr source_dict origin conn)
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()
-parseContentsRequests bytes
-    | L.null bytes = return ()
-    | otherwise =
-        case eitherResult (parse oneRequest bytes) of
-            Left e -> error ("parseContentsRequests: " ++ e)
-            Right (one, rest) -> yield one >> parseContentsRequests rest
+parseContentsRequests bs =
+    parsed parseContentsRequest (PB.fromLazy bs)
+    >>= either (throw . fst) return
 
-oneRequest :: Parser (ContentsRequest, L.ByteString)
-oneRequest = do
+parseContentsRequest :: Parser ContentsRequest
+parseContentsRequest = do
     addr <- fromWire <$> Parser.take 8
     len <- runUnpacking getWord64LE <$> Parser.take 8
     source_dict <- fromWire <$> Parser.take (fromIntegral len)
-    remainder <- Parser.takeLazyByteString
     case ContentsRequest <$> addr <*> source_dict of
         Left e -> fail (show e)
-        Right request -> return (request, remainder)
+        Right request -> return request
 
 idleTime :: Int
 idleTime = 1000000 -- 1 second
 
 breakInToChunks :: Monad m => L.ByteString -> Producer S.ByteString m ()
-breakInToChunks bs
-    | L.null bs =
-        return ()
-    | otherwise =
-        let (chunk, remainder) = verifySplit bs
-        in yield chunk >> breakInToChunks remainder
+breakInToChunks bs =
+    chunkBuilder (parsed parsePoint (PB.fromLazy bs))
+    >>= either (throw . fst) return
 
--- | Verify that the data is valid, we have to do this verification to split at
--- a valid boundary anyway.
-verifySplit :: L.ByteString -> (S.ByteString, L.ByteString)
-verifySplit = fromMaybe (error "verifySplit: impossible due to many'")
-                        . maybeResult . parse verify
+-- Take a producer of (Int, Builder), where Int is the number of bytes in the
+-- builder and produce chunks of n bytes.
+--
+-- This could be done with explicit recursion and next, but, then we would not
+-- get to apply a fold over a FreeT stack of producers. This is almost
+-- generalizable, at a stretch.
+chunkBuilder :: Monad m => Producer (Int, Builder) m r -> Producer S.ByteString m r
+chunkBuilder = PG.folds (<>) mempty (L.toStrict . toLazyByteString)
+             -- ^ Fold over each producer of counted Builders, turning it into
+             --   a contigous strict ByteString ready for transmission.
+             . builderChunks idealBurstSize
+             -- ^ Split the builder producer into FreeT 
   where
-    verify = (,) <$> (L.toStrict . L.fromChunks <$> chunks)
-                 <*> Parser.takeLazyByteString
-    -- Yes, a linked list of bytestrings isn't the most efficient structure.
-    -- It's more than fast enough.
-    chunks :: Parser [S.ByteString]
-    chunks = flip evalStateT 0 $ many' $ do
-        current_size <- get
-        when (current_size > idealBurstSize) (lift $ fail "I am full now.")
+    builderChunks :: Monad m
+                  => Int
+                  -- ^ The size to split a stream of builders at
+                  -> Producer (Int, Builder) m r
+                  -- ^ The input producer
+                  -> FreeT (Producer Builder m) m r
+                  -- ^ The FreeT delimited chunks of that producer, split into
+                  --   the desired chunk length
+    builderChunks max_size p = FreeT $ do
+        -- Try to grab the next value from the Producer
+        x <- next p
+        return $ case x of
+            Left r -> Pure r
+            Right (a, p') -> Free $ do
+                -- Pass the re-joined Producer to go, which will yield values
+                -- from it until the desired chunk size is reached.
+                p'' <- go max_size (yield a >> p')
+                -- The desired chunk size has been reached, loop and try again
+                -- with the rest of the stream (possibly empty)
+                return (builderChunks max_size p'')
 
-        packet <- lift $ Parser.take 24
+    -- This doesn't type check, but it's basically:
+    -- go :: Int -> Producer (Int, Builder) m r -> Producer Builder m (Producer (Int, Builder) m r)
+    --
+    -- We take a Producer and pass along its values until we've passed along
+    -- enough bytes (at least the initial bytes_left).
+    --
+    -- When done, returns the remainder of the unconsumed Producer
+    go bytes_left p =
+        if bytes_left < 0
+            then return p
+            else do
+                x <- lift (next p)
+                case x of
+                    Left r ->
+                        return . return $ r
+                    Right ((size, builder), p') -> do
+                        yield builder
+                        go (bytes_left - size) p'
+            
+-- Parse a single point, returning the size of the point and the bytes as a
+-- builder.
+parsePoint :: Parser (Int, Builder)
+parsePoint = do
+    packet <- Parser.take 24
 
-        case extendedSize packet of
-            Just len -> do
-                -- Mast ensure that we get this many bytes now, or attoparsec
-                -- will just backtrack on us. We do this with a dummy parser
-                -- inside an eitherP
-                extended <- lift $ eitherP (Parser.take len) (return ())
-                case extended of
-                    Left bytes -> do
-                        put (current_size + fromIntegral len + 24)
-                        return $ S.append packet bytes
-                    Right () ->
-                        error $ "verifySplit: corrupt data (extended burst) at: "
-                                ++ show current_size
-            Nothing -> do
-                put (current_size + 24)
-                return packet
+    case extendedSize packet of
+        Just len -> do
+            -- We must ensure that we get this many bytes now, or attoparsec
+            -- will just backtrack on us. We do this with a dummy parser inside
+            -- an eitherP
+            --
+            -- This is only to get good error messages.
+            extended <- eitherP (Parser.take len) (return ())
+            case extended of
+                Left bytes ->
+                    let b = byteString packet <> byteString bytes
+                    in return (24 + len, b)
+                Right () ->
+                    fail "not enough bytes in alleged extended burst"
+        Nothing ->
+            return (24, byteString packet)
 
-    extendedSize :: S.ByteString -> Maybe Int
-    extendedSize packet = flip runUnpacking packet $ do
-        addr <- Address <$> getWord64LE
-        if isAddressExtended addr
-            then do
-                unpackSkip 8
-                Just . fromIntegral <$> getWord64LE -- length
-            else
-                return Nothing
-
+-- Return the size of the extended segment, if the point is an extended one.
+extendedSize :: S.ByteString -> Maybe Int
+extendedSize packet = flip runUnpacking packet $ do
+    addr <- Address <$> getWord64LE
+    if isAddressExtended addr
+        then do
+            unpackSkip 8
+            Just . fromIntegral <$> getWord64LE -- length
+        else
+            return Nothing
 
 -- A burst should be, at maximum, very close to this side, unless the user
 -- decides to send a very long extended point.
-idealBurstSize :: Word64
-idealBurstSize =  16 * 1048576
+idealBurstSize :: Int
+idealBurstSize = 16 * 1048576

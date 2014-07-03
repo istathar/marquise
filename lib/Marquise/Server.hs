@@ -20,27 +20,27 @@ module Marquise.Server
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
-import Control.Exception (throwIO, throw)
-import Data.Attoparsec.ByteString.Lazy (Parser)
-import Data.Monoid
-import Data.Attoparsec.Combinator (eitherP)
-import qualified Data.ByteString.Char8 as S
-import qualified Pipes.ByteString as PB
-import Pipes.Attoparsec(parsed)
-import qualified Data.Attoparsec.Lazy as Parser
-import qualified Data.ByteString.Lazy as L
-import Pipes.Group(FreeT(..), FreeF(..))
-import qualified Pipes.Group as PG
+import Control.Exception (throw, throwIO)
 import Control.Monad
-import Data.ByteString.Builder(Builder, byteString, toLazyByteString)
+import Data.Attoparsec.ByteString.Lazy (Parser)
+import Data.Attoparsec.Combinator (eitherP)
+import qualified Data.Attoparsec.Lazy as Parser
+import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
+import qualified Data.ByteString.Char8 as S
+import qualified Data.ByteString.Lazy as L
+import Data.Monoid
 import Data.Packer
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
 import Marquise.Types (SpoolName (..))
 import Pipes
+import Pipes.Attoparsec (parsed)
+import qualified Pipes.ByteString as PB
+import Pipes.Group (FreeF (..), FreeT (..))
+import qualified Pipes.Group as PG
+import System.Log.Logger
 import Vaultaire.Types
 import Vaultaire.Util
-import System.Log.Logger
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
@@ -126,7 +126,7 @@ chunkBuilder = PG.folds (<>) mempty (L.toStrict . toLazyByteString)
              -- ^ Fold over each producer of counted Builders, turning it into
              --   a contigous strict ByteString ready for transmission.
              . builderChunks idealBurstSize
-             -- ^ Split the builder producer into FreeT 
+             -- ^ Split the builder producer into FreeT
   where
     builderChunks :: Monad m
                   => Int
@@ -167,7 +167,7 @@ chunkBuilder = PG.folds (<>) mempty (L.toStrict . toLazyByteString)
                     Right ((size, builder), p') -> do
                         yield builder
                         go (bytes_left - size) p'
-            
+
 -- Parse a single point, returning the size of the point and the bytes as a
 -- builder.
 parsePoint :: Parser (Int, Builder)

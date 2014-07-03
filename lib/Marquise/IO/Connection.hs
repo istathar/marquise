@@ -20,9 +20,9 @@ module Marquise.IO.Connection
 
 import Control.Exception
 import Data.List.NonEmpty (fromList)
+import Marquise.Types
 import System.ZMQ4 hiding (send)
 import Vaultaire.Types
-import Marquise.Types
 
 data SocketState = SocketState (Socket Dealer) String
 

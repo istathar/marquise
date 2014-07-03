@@ -18,11 +18,11 @@ module Marquise.IO.Writer
 ) where
 
 import Control.Exception
+import Data.ByteString (ByteString)
 import Marquise.Classes
 import Marquise.IO.Connection
-import Vaultaire.Types
 import Marquise.Types
-import Data.ByteString(ByteString)
+import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
     transmitBytes broker origin bytes =

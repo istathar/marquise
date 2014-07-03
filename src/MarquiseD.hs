@@ -2,13 +2,13 @@
 
 module Main where
 import qualified Data.ByteString.Char8 as S
+import Data.Monoid
 import Marquise.Client
 import Marquise.Server (marquiseServer)
 import Options.Applicative hiding (Parser, option)
 import qualified Options.Applicative as O
 import System.Log.Handler.Syslog
 import System.Log.Logger
-import Data.Monoid
 
 data Options = Options
   { broker    :: String

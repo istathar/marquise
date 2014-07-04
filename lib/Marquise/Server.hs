@@ -149,13 +149,14 @@ chunkBuilder = PG.folds (<>) mempty (L.toStrict . toLazyByteString)
                 -- with the rest of the stream (possibly empty)
                 return (builderChunks max_size p'')
 
-    -- This doesn't type check, but it's basically:
-    -- go :: Int -> Producer (Int, Builder) m r -> Producer Builder m (Producer (Int, Builder) m r)
-    --
     -- We take a Producer and pass along its values until we've passed along
     -- enough bytes (at least the initial bytes_left).
     --
     -- When done, returns the remainder of the unconsumed Producer
+    go :: Monad m
+       => Int
+       -> Producer (Int, Builder) m r
+       -> Producer Builder m (Producer (Int, Builder) m r)
     go bytes_left p =
         if bytes_left < 0
             then return p

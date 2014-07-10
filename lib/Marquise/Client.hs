@@ -24,6 +24,7 @@
 --
 
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
 
 module Marquise.Client
 (
@@ -149,7 +150,7 @@ removeSourceDict addr source_dict origin conn = do
 enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
                 -> conn
-                -> Producer (Address, SourceDict) m ()
+                -> Producer' (Address, SourceDict) m ()
 enumerateOrigin origin conn = do
     lift $ sendContentsRequest ContentsListRequest origin conn
     loop
@@ -170,7 +171,7 @@ readSimple :: MarquiseReaderMonad m conn
            -> Word64
            -> Origin
            -> conn
-           -> Producer SimpleBurst m ()
+           -> Producer' SimpleBurst m ()
 readSimple addr start end origin conn = do
     lift $ sendReaderRequest (SimpleReadRequest addr start end) origin conn
     loop
@@ -193,7 +194,7 @@ readExtended :: MarquiseReaderMonad m conn
              -> Word64
              -> Origin
              -> conn
-             -> Producer ExtendedBurst m ()
+             -> Producer' ExtendedBurst m ()
 readExtended addr start end origin conn = do
     lift $ sendReaderRequest (ExtendedReadRequest addr start end) origin conn
     loop

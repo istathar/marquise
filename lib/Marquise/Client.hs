@@ -65,6 +65,7 @@ module Marquise.Client
     TimeStamp(..),
     SimpleBurst(..),
     SimplePoint(..),
+    SocketState(..),
 ) where
 
 import Control.Applicative
@@ -79,6 +80,7 @@ import Data.Packer
 import Data.Word (Word64)
 import Marquise.Classes
 import Marquise.IO ()
+import Marquise.IO.Connection
 import Marquise.Types
 import Pipes
 import Vaultaire.Types

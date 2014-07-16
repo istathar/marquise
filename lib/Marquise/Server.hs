@@ -87,6 +87,7 @@ sendContents broker origin sn = forever $ do
     withContentsConnection broker $ \c ->
         runEffect $ for (parseContentsRequests bytes)
                         (sendSourceDictUpdate c)
+    debugM "sendContents" "Contents transmission complete, cleaning up"
     seal
   where
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do

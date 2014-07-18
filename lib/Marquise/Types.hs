@@ -38,9 +38,6 @@ data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
                              , contentsSpoolFile :: FilePath }
   deriving (Eq, Show)
 
--- | Time since epoch in nanoseconds. Internally a 'Word64'.
-newtype TimeStamp = TimeStamp Word64
-  deriving (Show, Eq, Num, Bounded)
 
 data SimplePoint = SimplePoint { simpleAddress :: Address
                                , simpleTime    :: Time

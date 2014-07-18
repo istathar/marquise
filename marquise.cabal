@@ -35,7 +35,7 @@ library
                      Marquise.IO.Connection
 
   build-depends:     base >=3 && <5,
-                     vaultaire-common,
+                     vaultaire-common >= 2.0.4,
                      bytestring >= 0.10.2, 
                      text,
                      containers,

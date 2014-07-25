@@ -1,4 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
 --
 -- Data vault for metrics
 --
@@ -10,16 +9,20 @@
 -- the 3-clause BSD licence.
 --
 
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- | Marquise server library, for transmission of queued data to the vault.
 module Marquise.Server
 (
     marquiseServer,
     parseContentsRequests,
     breakInToChunks,
-) where
+)
+where
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar
 import Control.Exception (throw, throwIO)
 import Control.Monad
 import Data.Attoparsec.ByteString.Lazy (Parser)
@@ -45,8 +48,8 @@ import Vaultaire.Util
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-marquiseServer :: String -> Origin -> String -> IO ()
-marquiseServer broker origin user_sn =
+marquiseServer :: String -> Origin -> String -> MVar () -> IO ()
+marquiseServer broker origin user_sn shutdown =
     case makeSpoolName user_sn of
         Left e -> throwIO e
         Right sn -> do
@@ -56,7 +59,9 @@ marquiseServer broker origin user_sn =
             linkThread (sendPoints broker origin sn)
             debugM "marquiseServer" "Starting contents transmitting thread"
             linkThread (sendContents broker origin sn)
-            waitForever
+            -- wait forever
+            takeMVar shutdown
+            debugM "marquiseServer" "End"
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
 sendPoints broker origin sn = forever $ do

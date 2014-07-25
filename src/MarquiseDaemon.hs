@@ -20,7 +20,8 @@ import qualified Options.Applicative as O
 import System.Log.Logger
 
 import Marquise.Client
-import Marquise.Server (marquiseServer)
+import Marquise.Server
+import Package (package, version)
 import Vaultaire.Program
 
 data Options = Options
@@ -77,7 +78,7 @@ main = do
             then Quiet
             else Normal
 
-    quit <- initializeProgram "vaultaire 2.1.0" level
+    quit <- initializeProgram (package ++ "-" ++ version) level
 
     debugM "Main.main" "Starting marquise daemon"
     marquiseServer broker origin namespace quit

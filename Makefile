@@ -1,3 +1,5 @@
+all: build
+
 marquised: dist/build/marquised/marquised
 
 #
@@ -28,7 +30,7 @@ test: dist/setup-config tags
 	@/bin/echo -e "CABAL\ttest"
 	cabal test
 
-dist/setup-config: marquise.cabal
+dist/setup-config: marquise.cabal Setup.hs
 	cabal configure \
 		--enable-tests \
 		--enable-benchmarks \
@@ -59,3 +61,7 @@ tags: $(SOURCES)
 
 format: $(SOURCES)
 	stylish-haskell -i $^
+
+clean:
+	cabal clean
+	-rm src/Package.hs

@@ -1,16 +1,16 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             2.0.0
+version:             2.1.0
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
 maintainer:          Anchor Engineering <engineering@anchor.com.au>
 copyright:           © 2013-2014 Anchor Systems, Pty Ltd and Others
 category:            Other
-tested-with:         GHC == 7.8.2
+tested-with:         GHC == 7.8.3
 stability:           experimental
 
-build-type:          Simple
+build-type:          Custom
 
 source-repository    head
   type:              git
@@ -70,15 +70,16 @@ library
 
 executable marquised
   hs-source-dirs:    src
-  main-is:           MarquiseD.hs
+  main-is:           MarquiseDaemon.hs
   default-language:  Haskell2010
 
   build-depends:     base >=3 && <5,
                      bytestring,
                      hslogger,
                      optparse-applicative,
+                     unix,
                      marquise,
-                     vaultaire-common
+                     vaultaire-common >= 2.1.0
 
   ghc-options:       -O2
                      -threaded

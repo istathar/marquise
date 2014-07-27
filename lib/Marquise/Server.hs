@@ -1,4 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
 --
 -- Data vault for metrics
 --
@@ -10,16 +9,20 @@
 -- the 3-clause BSD licence.
 --
 
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 -- | Marquise server library, for transmission of queued data to the vault.
 module Marquise.Server
 (
     marquiseServer,
     parseContentsRequests,
     breakInToChunks,
-) where
+)
+where
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.MVar
 import Control.Exception (throw, throwIO)
 import Control.Monad
 import Data.Attoparsec.ByteString.Lazy (Parser)
@@ -45,35 +48,37 @@ import Vaultaire.Util
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-marquiseServer :: String -> Origin -> String -> IO ()
-marquiseServer broker origin user_sn =
+marquiseServer :: String -> Origin -> String -> MVar () -> IO ()
+marquiseServer broker origin user_sn shutdown =
     case makeSpoolName user_sn of
         Left e -> throwIO e
         Right sn -> do
-            debugM "marquiseServer" "Creating spool directories"
+            debugM "Server.marquiseServer" "Creating spool directories"
             createDirectories sn
-            debugM "marquiseServer" "Starting point transmitting thread"
+            debugM "Server.marquiseServer" "Starting point transmitting thread"
             linkThread (sendPoints broker origin sn)
-            debugM "marquiseServer" "Starting contents transmitting thread"
+            debugM "Server.marquiseServer" "Starting contents transmitting thread"
             linkThread (sendContents broker origin sn)
-            waitForever
+            -- wait forever
+            takeMVar shutdown
+            debugM "Server.marquiseServer" "End"
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
 sendPoints broker origin sn = forever $ do
-    debugM "sendPoints" "Waiting for points"
+    debugM "Server.sendPoints" "Waiting for points"
     (bytes, seal) <- nextPoints sn
 
-    debugM "sendPoints" "Got points, starting transmission pipe"
+    debugM "Server.sendPoints" "Got points, starting transmission pipe"
     runEffect $ for (breakInToChunks bytes) sendChunk
 
-    debugM "sendPoints" "Transmission complete, cleaning up"
+    debugM "Server.sendPoints" "Transmission complete, cleaning up"
     seal
 
     threadDelay idleTime
   where
     sendChunk chunk = do
         let size = show . S.length $ chunk
-        liftIO (debugM "sendPoints" $ "Sending chunk of " ++ size ++ " bytes")
+        liftIO (debugM "Server.sendPoints" $ "Sending chunk of " ++ size ++ " bytes")
         lift (transmitBytes broker origin chunk)
 
 sendContents :: String
@@ -81,17 +86,17 @@ sendContents :: String
              -> SpoolName
              -> IO ()
 sendContents broker origin sn = forever $ do
-    debugM "sendContents" "Waiting for contents"
+    debugM "Server.sendContents" "Waiting for contents"
     (bytes, seal) <- nextContents sn
-    debugM "sendContents" "Got contents, starting transmission pipe"
+    debugM "Server.sendContents" "Got contents, starting transmission pipe"
     withContentsConnection broker $ \c ->
         runEffect $ for (parseContentsRequests bytes)
                         (sendSourceDictUpdate c)
-    debugM "sendContents" "Contents transmission complete, cleaning up"
+    debugM "Server.sendContents" "Contents transmission complete, cleaning up"
     seal
   where
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
-        liftIO (debugM "sendContents" $ "Sending contents update for " ++ show addr)
+        liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)
         lift (updateSourceDict addr source_dict origin conn)
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()

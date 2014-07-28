@@ -24,7 +24,7 @@ import Marquise.Types
 import System.ZMQ4 hiding (send)
 import Vaultaire.Types
 
--- | Wrapped ZMA4 Socket + broker/IP
+-- | Wrapped ZMQ4 Socket + broker/IP
 data SocketState = SocketState (Socket Dealer) String
 
 -- | Performs operation f through broker

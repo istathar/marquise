@@ -14,7 +14,7 @@
 -- | Marquise server library, for transmission of queued data to the vault.
 module Marquise.Server
 (
-    marquiseServer,
+    runMarquiseDaemon,
     parseContentsRequests,
     breakInToChunks,
 )
@@ -48,20 +48,22 @@ import Vaultaire.Util
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-marquiseServer :: String -> Origin -> String -> MVar () -> IO ()
-marquiseServer broker origin user_sn shutdown =
-    case makeSpoolName user_sn of
+runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IO ()
+runMarquiseDaemon broker origin namespace shutdown = do
+    linkThread $ startMarquise broker origin namespace shutdown
+
+startMarquise :: String -> Origin -> String -> MVar () -> IO ()
+startMarquise broker origin name _ = do
+    infoM "Server.startMarquise" "Marquise daemon started"
+    case makeSpoolName name of
         Left e -> throwIO e
         Right sn -> do
-            debugM "Server.marquiseServer" "Creating spool directories"
+            debugM "Server.startMarquise" "Creating spool directories"
             createDirectories sn
-            debugM "Server.marquiseServer" "Starting point transmitting thread"
+            debugM "Server.startMarquise" "Starting point transmitting thread"
             linkThread (sendPoints broker origin sn)
-            debugM "Server.marquiseServer" "Starting contents transmitting thread"
+            debugM "Server.startMarquise" "Starting contents transmitting thread"
             linkThread (sendContents broker origin sn)
-            -- wait forever
-            takeMVar shutdown
-            debugM "Server.marquiseServer" "End"
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
 sendPoints broker origin sn = forever $ do

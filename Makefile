@@ -1,6 +1,7 @@
 all: build
 
 marquised: dist/build/marquised/marquised
+data: dist/build/data/data
 
 #
 # Setup

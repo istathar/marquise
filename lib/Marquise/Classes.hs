@@ -50,6 +50,8 @@ class Monad m => MarquiseSpoolFileMonad m where
     -- | Close any open handles and flush all previously appended datum to disk
     close :: SpoolFiles -> m ()
 
+-- | Monad encapsulating writer operations. Note there is an instance for IO
+-- in IO/Writer.hs
 class Monad m => MarquiseWriterMonad m where
     -- | Send bytes upstream, returns when ack recieved.
     transmitBytes :: String      -- ^ Broker address
@@ -57,11 +59,15 @@ class Monad m => MarquiseWriterMonad m where
                   -> ByteString  -- ^ Bytes to send
                   -> m ()
 
+-- | Monad encapsulating reader operations. Note there is an instance for
+-- IO SocketState in IO/Contents.hs
 class Monad m => MarquiseContentsMonad m connection | m -> connection where
     withContentsConnection :: String -> (connection -> m a) -> m a
     sendContentsRequest    :: ContentsOperation -> Origin -> connection -> m ()
     recvContentsResponse   :: connection -> m ContentsResponse
 
+-- | Monad encapsulating reader operations. Note there is an instance for
+-- IO SocketState in IO/Reader.hs
 class Monad m => MarquiseReaderMonad m connection | m -> connection where
     withReaderConnection :: String -> (connection -> m a) -> m a
     sendReaderRequest    :: ReadRequest -> Origin -> connection -> m ()

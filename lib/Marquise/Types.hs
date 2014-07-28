@@ -34,20 +34,37 @@ import Vaultaire.Types
 newtype SpoolName = SpoolName { unSpoolName :: String }
   deriving (Eq, Show)
 
+-- | SpoolFiles simple wraps around two file paths.
+-- One for queuing points updates, one for queuing contents updates
 data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
                              , contentsSpoolFile :: FilePath }
   deriving (Eq, Show)
 
-
+-- | SimplePoints are simply wrapped packets for Vaultaire
+-- Each consists of 24 bytes:
+-- An 8 byte Address
+-- An 8 byte Timestamp (nanoseconds since Unix epoch)
+-- An 8 byte Payload
 data SimplePoint = SimplePoint { simpleAddress :: Address
                                , simpleTime    :: Time
                                , simplePayload :: Word64 }
   deriving Show
 
+
+-- | ExtendedPoints are simply wrapped packets for Vaultaire
+-- Each consists of 16 + 'length' bytes:
+-- An 8 byte Address
+-- An 8 byte Time (in nanoseconds since Unix epoch)
+-- A 'length' byte Payload
+-- On the wire their equivalent representation takes up
+-- 24 + 'length' bytes with format:
+-- 8 byte Address, 8 byte Time, 8 byte Length, Payload
 data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
                                    , extendedTime    :: Time
                                    , extendedPayload :: ByteString }
   deriving Show
+
+-- | Empty data constructs/types for exception handling
 
 data InvalidSpoolName = InvalidSpoolName
   deriving (Show, Typeable)

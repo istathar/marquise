@@ -24,7 +24,8 @@ library
   exposed-modules:   Marquise.Client,
                      Marquise.Classes,
                      Marquise.Types,
-                     Marquise.Server
+                     Marquise.Server,
+                     Marquise.IO.Util
 
   other-modules:     Marquise.IO,
                      Marquise.IO.FFI,

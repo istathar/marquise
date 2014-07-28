@@ -32,6 +32,7 @@ instance MarquiseWriterMonad IO where
                 OnDisk -> return ()
                 InvalidWriteOrigin -> throw InvalidOrigin
 
+-- | Tries to send some data, automatically retrying on timeout
 trySend :: Origin -> ByteString -> SocketState -> IO WriteResult
 trySend origin bytes c = do
     send (PassThrough bytes) origin c

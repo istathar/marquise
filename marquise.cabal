@@ -57,7 +57,7 @@ library
                      semigroups,
                      cryptohash,
                      zeromq4-haskell,
-                     vaultaire-common
+                     vaultaire-common >= 2.1.0
                                         
 
   ghc-options:       -O2
@@ -79,7 +79,7 @@ executable marquised
                      hslogger,
                      optparse-applicative,
                      unix,
-                     vaultaire-common,
+                     vaultaire-common >= 2.1.0,
                      marquise
 
   ghc-options:       -O2

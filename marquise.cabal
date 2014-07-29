@@ -36,7 +36,7 @@ library
 
   build-depends:     base >=3 && <5,
                      vaultaire-common >= 2.0.4,
-                     bytestring >= 0.10.2, 
+                     bytestring >= 0.10.2,
                      text,
                      containers,
                      unordered-containers,
@@ -100,6 +100,9 @@ executable data
                      optparse-applicative,
                      unix,
                      pipes,
+                     text,
+                     attoparsec,
+                     unordered-containers,
                      vaultaire-common >= 2.1.0,
                      marquise
 

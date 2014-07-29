@@ -11,15 +11,18 @@
 
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 
 module Main where
 
 import Control.Concurrent.MVar
 import qualified Data.ByteString.Char8 as S
 import Data.String
+import Data.Time
 import Data.Word (Word64)
 import Options.Applicative
 import Pipes
+import System.Locale
 import System.Log.Logger
 
 import Marquise.Client
@@ -38,7 +41,8 @@ data Options = Options
   , component :: Component }
 
 data Component = 
-                 Read { origin  :: Origin
+                 Time
+               | Read { origin  :: Origin
                       , address :: Address
                       , start   :: Word64
                       , end     :: Word64 }
@@ -72,7 +76,10 @@ optionsParser = Options <$> parseBroker
         <> help "Only emit warnings or fatal messages"
 
     parseComponents = subparser
-       (parseReadComponent <> parseListComponent)
+       (parseTimeComponent <> parseReadComponent <> parseListComponent)
+
+    parseTimeComponent =
+        componentHelper "now" (pure Time) "Display the current time"
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -116,6 +123,13 @@ listOptionsParser = List <$> parseOrigin
 -- Actual tools
 --
 
+runPrintDate :: IO ()
+runPrintDate = do
+    now <- getCurrentTime
+    let time = formatTime defaultTimeLocale "%FT%TZ" now
+    putStrLn time
+
+
 runReadPoints :: String -> Origin -> Address -> Word64 -> Word64 -> IO ()
 runReadPoints broker origin addr start end = do
     withReaderConnection broker $ \c ->
@@ -144,7 +158,7 @@ main = do
     quit <- initializeProgram (package ++ "-" ++ version) level
 
     -- Run selected component.
-    debugM "Main.main" "Running component"
+    debugM "Main.main" "Running command"
 
     -- Although none of the components are running in the background, we get off
     -- of the main thread so that we can block the main thread on the quit
@@ -152,6 +166,8 @@ main = do
 
     linkThread $ do
         case component of
+            Time ->
+                runPrintDate
             Read origin addr start end ->
                 runReadPoints broker origin addr start end
             List origin ->

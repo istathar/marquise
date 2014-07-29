@@ -149,6 +149,7 @@ removeSourceDict addr source_dict origin conn = do
         RemoveSuccess -> return ()
         _ -> error "requestSourceDictRemoval: Invalid response"
 
+-- | Stream read every Address associated with the given Origin
 enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
                 -> conn
@@ -167,6 +168,7 @@ enumerateOrigin origin conn = do
             _ ->
                 error "enumerateOrigin loop: Invalid response"
 
+-- | Stream read every SimpleBurst from the Address between the given times
 readSimple :: MarquiseReaderMonad m conn
            => Address
            -> Word64
@@ -190,6 +192,7 @@ readSimple addr start end origin conn = do
             _ ->
                 error "readSimple loop: Invalid response"
 
+-- | Stream read every ExtendedBurst from the Address between the given times
 readExtended :: MarquiseReaderMonad m conn
              => Address
              -> Word64
@@ -211,6 +214,7 @@ readExtended addr start end origin conn = do
             _ ->
                 error "readSimple loop: Invalid response"
 
+-- | Stream converts raw SimpleBursts into SimplePoints
 decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint m ()
 decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
   where
@@ -225,6 +229,7 @@ decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
             emitFrom (os + 24) chunk
 
 
+-- | Stream converts raw ExtendedBursts into ExtendedPoints
 decodeExtended :: Monad m => Pipe ExtendedBurst ExtendedPoint m ()
 decodeExtended = forever (unExtendedBurst <$> await >>= emitFrom 0)
   where
@@ -281,6 +286,7 @@ queueExtended sfs (Address ad) (TimeStamp ts) bs = appendPoints sfs bytes
         putWord64LE $ fromIntegral len
         putBytes bs
 
+-- | Updates the SourceDict at addr with source_dict
 queueSourceDictUpdate
     :: MarquiseSpoolFileMonad m
     => SpoolFiles

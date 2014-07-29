@@ -136,5 +136,3 @@ specificSpoolDir subdirs sn =
 
 baseSpoolDir :: SpoolName -> FilePath
 baseSpoolDir (SpoolName sn) = joinPath ["/var/spool/marquise/", sn]
-
-

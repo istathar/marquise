@@ -37,7 +37,6 @@ import Vaultaire.Program
 data Options = Options
   { broker    :: String
   , debug     :: Bool
-  , quiet     :: Bool
   , component :: Component }
 
 data Component = 
@@ -54,7 +53,6 @@ helpfulParser = info (helper <*> optionsParser) fullDesc
 optionsParser :: Parser Options
 optionsParser = Options <$> parseBroker
                         <*> parseDebug
-                        <*> parseQuiet
                         <*> parseComponents
   where
     parseBroker = strOption $
@@ -69,11 +67,6 @@ optionsParser = Options <$> parseBroker
            long "debug"
         <> short 'd'
         <> help "Output lots of debugging information"
-
-    parseQuiet = switch $
-           long "quiet"
-        <> short 'q'
-        <> help "Only emit warnings or fatal messages"
 
     parseComponents = subparser
        (parseTimeComponent <> parseReadComponent <> parseListComponent)
@@ -151,9 +144,7 @@ main = do
 
     let level = if debug
         then Debug
-        else if quiet
-            then Quiet
-            else Normal
+        else Quiet
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 

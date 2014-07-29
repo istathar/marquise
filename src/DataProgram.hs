@@ -11,16 +11,21 @@
 
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
 import Control.Concurrent.MVar
-import qualified Data.ByteString.Char8 as S
 import Data.String
 import Data.Word (Word64)
 import Options.Applicative
 import Pipes
 import System.Log.Logger
+import Data.Text (Text)
+import qualified Data.Text             as T
+import qualified Data.ByteString.Char8 as S
+import qualified Data.Attoparsec.Text  as PT
+import qualified Data.HashMap.Strict   as HT
 
 import Marquise.Client
 import Package (package, version)
@@ -37,12 +42,20 @@ data Options = Options
   , quiet     :: Bool
   , component :: Component }
 
-data Component = 
+data Component =
                  Read { origin  :: Origin
                       , address :: Address
                       , start   :: Word64
                       , end     :: Word64 }
                | List { origin :: Origin }
+               | Add { origin :: Origin
+                     , addr   :: Address
+                     , dict   :: [Tag] }
+               | Remove  { origin :: Origin
+                     , addr   :: Address
+                     , dict   :: [Tag] }
+
+type Tag = (Text, Text)
 
 helpfulParser :: ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -72,7 +85,10 @@ optionsParser = Options <$> parseBroker
         <> help "Only emit warnings or fatal messages"
 
     parseComponents = subparser
-       (parseReadComponent <> parseListComponent)
+       (   parseReadComponent
+        <> parseListComponent
+        <> parseAddComponent
+        <> parseRemoveComponent )
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -80,13 +96,33 @@ optionsParser = Options <$> parseBroker
     parseListComponent =
         componentHelper "list" listOptionsParser "List addresses and metadata in origin"
 
+    parseAddComponent =
+        componentHelper "add-source" addOptionsParser "Add some tags to an address"
+
+    parseRemoveComponent =
+        componentHelper "remove-source" addOptionsParser "Remove some tags from an address, does nothing if the tags do not exist"
+
     componentHelper cmd_name parser desc =
         command cmd_name (info (helper <*> parser) (progDesc desc))
+
+
+parseAddress :: Parser Address
+parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
 
 parseOrigin :: Parser Origin
 parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
   where
     mkOrigin = Origin . S.pack
+
+parseTags :: Parser [Tag]
+parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
+  where
+    mkTag x = case PT.parseOnly tag $ T.pack x of
+      Left _  -> error "data: invalid tag format"
+      Right y -> y
+    tag = (,) <$> PT.takeWhile (/= ':')
+              <* ":"
+              <*> PT.takeWhile (/= ',')
 
 readOptionsParser :: Parser Component
 readOptionsParser = Read <$> parseOrigin
@@ -94,7 +130,6 @@ readOptionsParser = Read <$> parseOrigin
                          <*> parseStart
                          <*> parseEnd
   where
-    parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
     parseStart = option $
         long "start"
         <> short 's'
@@ -112,6 +147,12 @@ readOptionsParser = Read <$> parseOrigin
 listOptionsParser :: Parser Component
 listOptionsParser = List <$> parseOrigin
 
+addOptionsParser :: Parser Component
+addOptionsParser = Add <$> parseOrigin <*> parseAddress <*> parseTags
+
+removeOptionsParser :: Parser Component
+removeOptionsParser = Remove <$> parseOrigin <*> parseAddress <*> parseTags
+
 --
 -- Actual tools
 --
@@ -126,6 +167,17 @@ runListContents :: String -> Origin -> IO ()
 runListContents broker origin = do
     withContentsConnection broker $ \c ->
         runEffect $ for (enumerateOrigin origin c) (lift . print)
+
+runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> IO ()
+runAddTags    = run updateSourceDict
+runRemoveTags = run removeSourceDict
+
+run op broker origin addr ts = do
+  let dict = case makeSourceDict $ HT.fromList ts of
+                  Left e  -> error e
+                  Right a -> a
+  withContentsConnection broker $ \c ->
+        op addr dict origin c
 
 --
 -- Main program entry point
@@ -156,8 +208,11 @@ main = do
                 runReadPoints broker origin addr start end
             List origin ->
                 runListContents broker origin
+            Add origin addr tags ->
+                runAddTags broker origin addr tags
+            Remove  origin addr tags ->
+                runRemoveTags broker origin addr tags
         putMVar quit ()
 
     takeMVar quit
     debugM "Main.main" "End"
-

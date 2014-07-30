@@ -18,13 +18,12 @@ module Main where
 
 import Control.Concurrent.MVar
 import Data.String
-import Data.Time
-import Data.Word (Word64)
 import Options.Applicative
 import Pipes
 import System.Locale
 import System.Log.Logger
 import Data.Text (Text)
+import Data.Time
 import qualified Data.Text             as T
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Attoparsec.Text  as PT
@@ -32,6 +31,7 @@ import qualified Data.HashMap.Strict   as HT
 
 import Marquise.Client
 import Package (package, version)
+import Vaultaire.Types
 import Vaultaire.Util
 import Vaultaire.Program
 
@@ -44,12 +44,12 @@ data Options = Options
   , debug     :: Bool
   , component :: Component }
 
-data Component = 
-                 Time
+data Component =
+                 TimeComp
                | Read { origin  :: Origin
                       , address :: Address
-                      , start   :: Word64
-                      , end     :: Word64 }
+                      , start   :: Time
+                      , end     :: Time }
                | List { origin :: Origin }
                | Add { origin :: Origin
                      , addr   :: Address
@@ -89,7 +89,7 @@ optionsParser = Options <$> parseBroker
         <> parseRemoveComponent )
 
     parseTimeComponent =
-        componentHelper "now" (pure Time) "Display the current time"
+        componentHelper "now" (pure TimeComp) "Display the current time"
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -165,7 +165,7 @@ runPrintDate = do
     putStrLn time
 
 
-runReadPoints :: String -> Origin -> Address -> Word64 -> Word64 -> IO ()
+runReadPoints :: String -> Origin -> Address -> Time -> Time -> IO ()
 runReadPoints broker origin addr start end = do
     withReaderConnection broker $ \c ->
         runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
@@ -210,7 +210,7 @@ main = do
 
     linkThread $ do
         case component of
-            Time ->
+            TimeComp ->
                 runPrintDate
             Read origin addr start end ->
                 runReadPoints broker origin addr start end

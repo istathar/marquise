@@ -22,7 +22,6 @@ module Marquise.IO.Util(
 ) where
 
 import Control.Exception
-import Data.Word
 import Pipes
 import qualified Pipes.Prelude as Pipes
 import System.IO
@@ -32,7 +31,7 @@ import Marquise.Types
 import Vaultaire.Types
 
 -- | Convenience type synonym for readers in IO
-type IOReader a = Address -> Word64 -> Word64 -> Origin -> SocketState -> Producer' a IO ()
+type IOReader a = Address -> Time -> Time -> Origin -> SocketState -> Producer' a IO ()
 
 -- | Consistent version of enumerateOrigin in IO
 consistentEnumerateOrigin :: Origin
@@ -84,8 +83,8 @@ chunkifyReader readerFunc numChunks addr start end origin conn
 -- | Helper function for chunkifyReader
 chunkifyReader' :: IOReader a
                 -> Address
-                -> [Word64]
-                -> [Word64]
+                -> [Time]
+                -> [Time]
                 -> Origin
                 -> SocketState
                 -> Producer' a IO ()
@@ -101,8 +100,8 @@ chunkifyReader' readerFunc addr (start:starts) (end:ends) origin conn = do
 -- | Reads a single 'chunk' handling timeout exceptions
 readChunk :: IOReader a
           -> Address
-          -> Word64
-          -> Word64
+          -> Time
+          -> Time
           -> Origin
           -> SocketState
           -> IO [a]
@@ -110,15 +109,15 @@ readChunk readerFunc addr start end origin conn =
     catch (Pipes.toListM $ readerFunc addr start end origin conn)
             (handleTimeout readerFunc addr start end origin conn)
 
--- | Handles a caught timeout exception and attempts to read again    
+-- | Handles a caught timeout exception and attempts to read again
 handleTimeout :: IOReader a
               -> Address
-              -> Word64
-              -> Word64
+              -> Time
+              -> Time
               -> Origin
               -> SocketState
               -> MarquiseTimeout
               -> IO [a]
 handleTimeout readerFunc addr start end origin conn e = do
     hPutStrLn stderr $ concat ["Caught: ", Prelude.show e, " restarting read for chunk."]
-    readChunk readerFunc addr start end origin conn 
+    readChunk readerFunc addr start end origin conn

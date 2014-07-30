@@ -36,7 +36,7 @@ library
                      Marquise.IO.Connection
 
   build-depends:     base >=3 && <5,
-                     bytestring >= 0.10.2, 
+                     bytestring >= 0.10.2,
                      text,
                      containers,
                      unordered-containers,
@@ -101,6 +101,9 @@ executable data
                      optparse-applicative,
                      unix,
                      pipes,
+                     text,
+                     attoparsec,
+                     unordered-containers,
                      vaultaire-common >= 2.1.0,
                      time,
                      old-locale,

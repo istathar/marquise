@@ -131,10 +131,10 @@ breakInToChunks bs =
 -- generalizable, at a stretch.
 chunkBuilder :: Monad m => Producer (Int, Builder) m r -> Producer S.ByteString m r
 chunkBuilder = PG.folds (<>) mempty (L.toStrict . toLazyByteString)
-             -- ^ Fold over each producer of counted Builders, turning it into
-             --   a contigous strict ByteString ready for transmission.
+             -- Fold over each producer of counted Builders, turning it into
+             -- a contigous strict ByteString ready for transmission.
              . builderChunks idealBurstSize
-             -- ^ Split the builder producer into FreeT
+             -- Split the builder producer into FreeT
   where
     builderChunks :: Monad m
                   => Int

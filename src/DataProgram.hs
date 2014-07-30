@@ -24,11 +24,13 @@ import Options.Applicative
 import Pipes
 import System.Locale
 import System.Log.Logger
+import Data.Binary.IEEE754
 import Data.Text (Text)
 import qualified Data.Text             as T
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Attoparsec.Text  as PT
 import qualified Data.HashMap.Strict   as HT
+import Text.Printf
 
 import Marquise.Client
 import Package (package, version)
@@ -46,7 +48,8 @@ data Options = Options
 
 data Component = 
                  Time
-               | Read { origin  :: Origin
+               | Read { human   :: Bool
+                      , origin  :: Origin
                       , address :: Address
                       , start   :: Word64
                       , end     :: Word64 }
@@ -126,11 +129,17 @@ parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
               <*> PT.takeWhile (/= ',')
 
 readOptionsParser :: Parser Component
-readOptionsParser = Read <$> parseOrigin
+readOptionsParser = Read <$> parseRaw
+                         <*> parseOrigin
                          <*> parseAddress
                          <*> parseStart
                          <*> parseEnd
   where
+    parseRaw = switch $
+        long "raw"
+        <> short 'r'
+        <> help "Output values in a raw form (human-readable otherwise)"
+
     parseStart = option $
         long "start"
         <> short 's'
@@ -165,11 +174,30 @@ runPrintDate = do
     putStrLn time
 
 
-runReadPoints :: String -> Origin -> Address -> Word64 -> Word64 -> IO ()
-runReadPoints broker origin addr start end = do
+runReadPoints :: String -> Bool -> Origin -> Address -> Word64 -> Word64 -> IO ()
+runReadPoints broker raw origin addr start end = do
     withReaderConnection broker $ \c ->
         runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
-                        (lift . print)
+                        (lift . putStrLn . (displayPoint raw))
+
+displayPoint :: Bool -> SimplePoint -> String
+displayPoint raw (SimplePoint address timestamp payload) =
+    if raw
+        then
+            show address ++ "," ++ show timestamp ++ "," ++ show payload
+        else
+            formatTimestamp timestamp ++ " " ++ formatValue payload
+  where
+    formatTimestamp :: Word64 -> String
+    formatTimestamp t = show $ (fromIntegral t :: Int) `div` 1000000000
+
+    formatValue :: Word64 -> String
+    formatValue v = if v > (2^(51 :: Int) :: Word64)
+        then
+            printf "% 25.6f" (wordToDouble v)
+        else
+            printf "% 18d" v
+
 
 runListContents :: String -> Origin -> IO ()
 runListContents broker origin = do
@@ -212,8 +240,8 @@ main = do
         case component of
             Time ->
                 runPrintDate
-            Read origin addr start end ->
-                runReadPoints broker origin addr start end
+            Read human origin addr start end ->
+                runReadPoints broker human origin addr start end
             List origin ->
                 runListContents broker origin
             Add origin addr tags ->

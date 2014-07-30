@@ -107,6 +107,7 @@ executable data
                      vaultaire-common >= 2.1.0,
                      time,
                      old-locale,
+                     data-binary-ieee754,
                      marquise
 
   ghc-options:       -O2

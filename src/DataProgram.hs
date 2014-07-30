@@ -11,15 +11,18 @@
 
 {-# LANGUAGE RankNTypes      #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
 import Control.Concurrent.MVar
 import Data.String
+import Data.Time
 import Data.Word (Word64)
 import Options.Applicative
 import Pipes
+import System.Locale
 import System.Log.Logger
 import Data.Text (Text)
 import qualified Data.Text             as T
@@ -39,11 +42,11 @@ import Vaultaire.Program
 data Options = Options
   { broker    :: String
   , debug     :: Bool
-  , quiet     :: Bool
   , component :: Component }
 
-data Component =
-                 Read { origin  :: Origin
+data Component = 
+                 Time
+               | Read { origin  :: Origin
                       , address :: Address
                       , start   :: Word64
                       , end     :: Word64 }
@@ -63,7 +66,6 @@ helpfulParser = info (helper <*> optionsParser) fullDesc
 optionsParser :: Parser Options
 optionsParser = Options <$> parseBroker
                         <*> parseDebug
-                        <*> parseQuiet
                         <*> parseComponents
   where
     parseBroker = strOption $
@@ -79,16 +81,15 @@ optionsParser = Options <$> parseBroker
         <> short 'd'
         <> help "Output lots of debugging information"
 
-    parseQuiet = switch $
-           long "quiet"
-        <> short 'q'
-        <> help "Only emit warnings or fatal messages"
-
     parseComponents = subparser
-       (   parseReadComponent
+       (   parseTimeComponent
+        <> parseReadComponent
         <> parseListComponent
         <> parseAddComponent
         <> parseRemoveComponent )
+
+    parseTimeComponent =
+        componentHelper "now" (pure Time) "Display the current time"
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -157,6 +158,13 @@ removeOptionsParser = Remove <$> parseOrigin <*> parseAddress <*> parseTags
 -- Actual tools
 --
 
+runPrintDate :: IO ()
+runPrintDate = do
+    now <- getCurrentTime
+    let time = formatTime defaultTimeLocale "%FT%TZ" now
+    putStrLn time
+
+
 runReadPoints :: String -> Origin -> Address -> Word64 -> Word64 -> IO ()
 runReadPoints broker origin addr start end = do
     withReaderConnection broker $ \c ->
@@ -189,14 +197,12 @@ main = do
 
     let level = if debug
         then Debug
-        else if quiet
-            then Quiet
-            else Normal
+        else Quiet
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 
     -- Run selected component.
-    debugM "Main.main" "Running component"
+    debugM "Main.main" "Running command"
 
     -- Although none of the components are running in the background, we get off
     -- of the main thread so that we can block the main thread on the quit
@@ -204,6 +210,8 @@ main = do
 
     linkThread $ do
         case component of
+            Time ->
+                runPrintDate
             Read origin addr start end ->
                 runReadPoints broker origin addr start end
             List origin ->

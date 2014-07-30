@@ -27,6 +27,7 @@ import System.Log.Logger
 import Data.Binary.IEEE754
 import Data.Text (Text)
 import qualified Data.Text             as T
+import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Attoparsec.Text  as PT
 import qualified Data.HashMap.Strict   as HT
@@ -186,17 +187,21 @@ displayPoint raw (SimplePoint address timestamp payload) =
         then
             show address ++ "," ++ show timestamp ++ "," ++ show payload
         else
-            formatTimestamp timestamp ++ " " ++ formatValue payload
+            show address ++ "  " ++ formatTimestamp timestamp ++ " " ++ formatValue payload
   where
     formatTimestamp :: Word64 -> String
-    formatTimestamp t = show $ (fromIntegral t :: Int) `div` 1000000000
+    formatTimestamp t =
+      let
+        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t :: Int) `div` 1000000000
+      in
+        formatTime defaultTimeLocale "%FT%TZ" seconds
 
     formatValue :: Word64 -> String
     formatValue v = if v > (2^(51 :: Int) :: Word64)
         then
-            printf "% 25.6f" (wordToDouble v)
+            printf "% 24.6f" (wordToDouble v)
         else
-            printf "% 18d" v
+            printf "% 17d" v
 
 
 runListContents :: String -> Origin -> IO ()

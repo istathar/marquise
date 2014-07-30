@@ -17,7 +17,6 @@ module Main where
 
 import Control.Concurrent.MVar
 import Data.String
-import Data.Word (Word64)
 import Options.Applicative
 import Pipes
 import System.Log.Logger
@@ -29,6 +28,7 @@ import qualified Data.HashMap.Strict   as HT
 
 import Marquise.Client
 import Package (package, version)
+import Vaultaire.Types
 import Vaultaire.Util
 import Vaultaire.Program
 
@@ -45,8 +45,8 @@ data Options = Options
 data Component =
                  Read { origin  :: Origin
                       , address :: Address
-                      , start   :: Word64
-                      , end     :: Word64 }
+                      , start   :: Time
+                      , end     :: Time }
                | List { origin :: Origin }
                | Add { origin :: Origin
                      , addr   :: Address
@@ -157,7 +157,7 @@ removeOptionsParser = Remove <$> parseOrigin <*> parseAddress <*> parseTags
 -- Actual tools
 --
 
-runReadPoints :: String -> Origin -> Address -> Word64 -> Word64 -> IO ()
+runReadPoints :: String -> Origin -> Address -> Time -> Time -> IO ()
 runReadPoints broker origin addr start end = do
     withReaderConnection broker $ \c ->
         runEffect $ for (readSimple addr start end origin c >-> decodeSimple)

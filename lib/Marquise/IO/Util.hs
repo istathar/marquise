@@ -109,15 +109,15 @@ readChunk readerFunc addr start end origin conn =
     catch (Pipes.toListM $ readerFunc addr start end origin conn)
             (handleTimeout readerFunc addr start end origin conn)
 
--- | Handles a caught timeout exception and attempts to read again    
+-- | Handles a caught timeout exception and attempts to read again
 handleTimeout :: IOReader a
               -> Address
-              -> Word64
-              -> Word64
+              -> Time
+              -> Time
               -> Origin
               -> SocketState
               -> MarquiseTimeout
               -> IO [a]
 handleTimeout readerFunc addr start end origin conn e = do
     hPutStrLn stderr $ concat ["Caught: ", Prelude.show e, " restarting read for chunk."]
-    readChunk readerFunc addr start end origin conn 
+    readChunk readerFunc addr start end origin conn

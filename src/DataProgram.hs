@@ -192,9 +192,10 @@ displayPoint raw (SimplePoint address timestamp payload) =
     formatTimestamp :: Word64 -> String
     formatTimestamp t =
       let
-        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t :: Int) `div` 1000000000
+        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
+        iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
       in
-        formatTime defaultTimeLocale "%FT%TZ" seconds
+        (take 29 iso8601) ++ "Z"
 
     formatValue :: Word64 -> String
     formatValue v = if v > (2^(51 :: Int) :: Word64)

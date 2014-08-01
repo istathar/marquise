@@ -197,6 +197,17 @@ displayPoint raw (SimplePoint address timestamp payload) =
       in
         (take 29 iso8601) ++ "Z"
 
+{-
+    Take a stab at differentiating between raw integers and encoded floats.
+    The 2^51 is somewhat arbitrary, being one less bit than the size of the
+    significand in an IEEE 754 64-bit double. Seems safe to assume anything
+    larger than that was in fact an encoded float; 2^32 (aka 10^9) is too small
+    — we have counters bigger than that — but nothing has gone past 10^15 so
+    there seemed plenty of headroom. At the end of the day this is just a
+    convenience; if you need the real value and know its interpretation then
+    you can request raw (in this program) output or actual bytes (via reader
+    daemon).
+-}
     formatValue :: Word64 -> String
     formatValue v = if v > (2^(51 :: Int) :: Word64)
         then

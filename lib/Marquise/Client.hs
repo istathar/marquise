@@ -263,6 +263,8 @@ decodeExtended = forever (unExtendedBurst <$> await >>= emitFrom 0)
 
 -- | Send a "simple" data point. Interpretation of this point, e.g.
 -- float/signed is up to you, but it must be sent in the form of a Word64.
+-- Clears the least-significant bit of the address to indicate that this
+-- is a simple datapoint.
 queueSimple
     :: MarquiseSpoolFileMonad m
     => SpoolFiles
@@ -278,6 +280,8 @@ queueSimple sfs (Address ad) (TimeStamp ts) w = appendPoints sfs bytes
         putWord64LE w
 
 -- | Send an "extended" data point. Again, representation is up to you.
+-- Sets the least-significant bit of the address to indicate that this is
+-- an extended data point.
 queueExtended
     :: MarquiseSpoolFileMonad m
     => SpoolFiles

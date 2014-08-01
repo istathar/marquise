@@ -48,12 +48,12 @@ data Options = Options
   , component :: Component }
 
 data Component = 
-                 Time
-               | Read { human   :: Bool
+                 Now
+               | Read { raw   :: Bool
                       , origin  :: Origin
                       , address :: Address
-                      , start   :: Word64
-                      , end     :: Word64 }
+                      , start   :: TimeStamp
+                      , end     :: TimeStamp }
                | List { origin :: Origin }
                | Add { origin :: Origin
                      , addr   :: Address
@@ -93,7 +93,7 @@ optionsParser = Options <$> parseBroker
         <> parseRemoveComponent )
 
     parseTimeComponent =
-        componentHelper "now" (pure Time) "Display the current time"
+        componentHelper "now" (pure Now) "Display the current time"
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -175,7 +175,7 @@ runPrintDate = do
     putStrLn time
 
 
-runReadPoints :: String -> Bool -> Origin -> Address -> Word64 -> Word64 -> IO ()
+runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> IO ()
 runReadPoints broker raw origin addr start end = do
     withReaderConnection broker $ \c ->
         runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
@@ -189,8 +189,8 @@ displayPoint raw (SimplePoint address timestamp payload) =
         else
             show address ++ "  " ++ formatTimestamp timestamp ++ " " ++ formatValue payload
   where
-    formatTimestamp :: Word64 -> String
-    formatTimestamp t =
+    formatTimestamp :: TimeStamp -> String
+    formatTimestamp (TimeStamp t) =
       let
         seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
         iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
@@ -244,7 +244,7 @@ main = do
 
     linkThread $ do
         case component of
-            Time ->
+            Now ->
                 runPrintDate
             Read human origin addr start end ->
                 runReadPoints broker human origin addr start end

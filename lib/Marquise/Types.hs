@@ -46,7 +46,7 @@ data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
 -- An 8 byte Timestamp (nanoseconds since Unix epoch)
 -- An 8 byte Payload
 data SimplePoint = SimplePoint { simpleAddress :: Address
-                               , simpleTime    :: Time
+                               , simpleTime    :: TimeStamp
                                , simplePayload :: Word64 }
   deriving Show
 
@@ -60,7 +60,7 @@ data SimplePoint = SimplePoint { simpleAddress :: Address
 -- 24 + 'length' bytes with format:
 -- 8 byte Address, 8 byte Time, 8 byte Length, Payload
 data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
-                                   , extendedTime    :: Time
+                                   , extendedTime    :: TimeStamp
                                    , extendedPayload :: ByteString }
   deriving Show
 

@@ -102,7 +102,13 @@ createSpoolFiles s =
         Left e -> throw e
         Right sn -> createDirectories sn >> randomSpoolFiles sn
 
--- | Deterministically convert a ByteString to an Address, this uses siphash.
+-- | Deterministically convert a ByteString to an Address by taking the
+-- most significant 63 bytes of its SipHash-2-4[0] with a zero key. The 
+-- LSB of the resulting 64-bit value is not part of the unique portion
+-- of the address; it is set when queueing writes, depending on the
+-- point type (simple or extended) being written.
+--
+-- [0] https://131002.net/siphash/
 hashIdentifier :: ByteString -> Address
 hashIdentifier = Address . (`clearBit` 0) . unSipHash . hash iv
   where
@@ -257,6 +263,8 @@ decodeExtended = forever (unExtendedBurst <$> await >>= emitFrom 0)
 
 -- | Send a "simple" data point. Interpretation of this point, e.g.
 -- float/signed is up to you, but it must be sent in the form of a Word64.
+-- Clears the least-significant bit of the address to indicate that this
+-- is a simple datapoint.
 queueSimple
     :: MarquiseSpoolFileMonad m
     => SpoolFiles
@@ -272,6 +280,8 @@ queueSimple sfs (Address ad) (TimeStamp ts) w = appendPoints sfs bytes
         putWord64LE w
 
 -- | Send an "extended" data point. Again, representation is up to you.
+-- Sets the least-significant bit of the address to indicate that this is
+-- an extended data point.
 queueExtended
     :: MarquiseSpoolFileMonad m
     => SpoolFiles

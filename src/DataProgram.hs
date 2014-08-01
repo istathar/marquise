@@ -25,6 +25,7 @@ import System.Log.Logger
 import Data.Binary.IEEE754
 import Data.Text (Text)
 import Data.Time
+import Data.Word
 import qualified Data.Text             as T
 import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as S
@@ -34,7 +35,6 @@ import Text.Printf
 
 import Marquise.Client
 import Package (package, version)
-import Vaultaire.Types
 import Vaultaire.Util
 import Vaultaire.Program
 

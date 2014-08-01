@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             2.3.0
+version:             2.4.1
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
@@ -57,9 +57,8 @@ library
                      semigroups,
                      cryptohash,
                      zeromq4-haskell,
-                     vaultaire-common >= 2.1.0
+                     vaultaire-common >= 2.4.1
                                         
-
   ghc-options:       -O2
                      -threaded
                      -Wall
@@ -79,7 +78,7 @@ executable marquised
                      hslogger,
                      optparse-applicative,
                      unix,
-                     vaultaire-common >= 2.1.0,
+                     vaultaire-common >= 2.4.1,
                      marquise
 
   ghc-options:       -O2
@@ -104,9 +103,10 @@ executable data
                      text,
                      attoparsec,
                      unordered-containers,
-                     vaultaire-common >= 2.1.0,
+                     vaultaire-common >= 2.4.1,
                      time,
                      old-locale,
+                     data-binary-ieee754,
                      marquise
 
   ghc-options:       -O2

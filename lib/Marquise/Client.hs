@@ -171,8 +171,8 @@ enumerateOrigin origin conn = do
 -- | Stream read every SimpleBurst from the Address between the given times
 readSimple :: MarquiseReaderMonad m conn
            => Address
-           -> Time
-           -> Time
+           -> TimeStamp
+           -> TimeStamp
            -> Origin
            -> conn
            -> Producer' SimpleBurst m ()
@@ -195,8 +195,8 @@ readSimple addr start end origin conn = do
 -- | Stream read every ExtendedBurst from the Address between the given times
 readExtended :: MarquiseReaderMonad m conn
              => Address
-             -> Time
-             -> Time
+             -> TimeStamp
+             -> TimeStamp
              -> Origin
              -> conn
              -> Producer' ExtendedBurst m ()
@@ -224,7 +224,9 @@ decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
             yield $ flip runUnpacking chunk $ do
                 unpackSetPosition os
                 addr <- Address <$> getWord64LE
-                SimplePoint addr <$> Time <$> getWord64LE <*> getWord64LE
+                time <- TimeStamp <$> getWord64LE
+                payload <- getWord64LE
+                return $ SimplePoint addr time payload
 
             emitFrom (os + 24) chunk
 
@@ -245,7 +247,7 @@ decodeExtended = forever (unExtendedBurst <$> await >>= emitFrom 0)
     unpack os = do
         unpackSetPosition os
         addr <- Address <$> getWord64LE
-        time <- Time <$> getWord64LE
+        time <- TimeStamp <$> getWord64LE
         len <- fromIntegral <$> getWord64LE
         payload <- if len == 0
                        then return BS.empty

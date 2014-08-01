@@ -22,16 +22,19 @@ import Options.Applicative
 import Pipes
 import System.Locale
 import System.Log.Logger
+import Data.Binary.IEEE754
 import Data.Text (Text)
 import Data.Time
+import Data.Word
 import qualified Data.Text             as T
+import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Attoparsec.Text  as PT
 import qualified Data.HashMap.Strict   as HT
+import Text.Printf
 
 import Marquise.Client
 import Package (package, version)
-import Vaultaire.Types
 import Vaultaire.Util
 import Vaultaire.Program
 
@@ -44,12 +47,13 @@ data Options = Options
   , debug     :: Bool
   , component :: Component }
 
-data Component =
-                 TimeComp
-               | Read { origin  :: Origin
+data Component = 
+                 Now
+               | Read { raw   :: Bool
+                      , origin  :: Origin
                       , address :: Address
-                      , start   :: Time
-                      , end     :: Time }
+                      , start   :: TimeStamp
+                      , end     :: TimeStamp }
                | List { origin :: Origin }
                | Add { origin :: Origin
                      , addr   :: Address
@@ -89,7 +93,7 @@ optionsParser = Options <$> parseBroker
         <> parseRemoveComponent )
 
     parseTimeComponent =
-        componentHelper "now" (pure TimeComp) "Display the current time"
+        componentHelper "now" (pure Now) "Display the current time"
 
     parseReadComponent =
         componentHelper "read" readOptionsParser "Read points from a given address and time range"
@@ -126,11 +130,17 @@ parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
               <*> PT.takeWhile (/= ',')
 
 readOptionsParser :: Parser Component
-readOptionsParser = Read <$> parseOrigin
+readOptionsParser = Read <$> parseRaw
+                         <*> parseOrigin
                          <*> parseAddress
                          <*> parseStart
                          <*> parseEnd
   where
+    parseRaw = switch $
+        long "raw"
+        <> short 'r'
+        <> help "Output values in a raw form (human-readable otherwise)"
+
     parseStart = option $
         long "start"
         <> short 's'
@@ -165,11 +175,46 @@ runPrintDate = do
     putStrLn time
 
 
-runReadPoints :: String -> Origin -> Address -> Time -> Time -> IO ()
-runReadPoints broker origin addr start end = do
+runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> IO ()
+runReadPoints broker raw origin addr start end = do
     withReaderConnection broker $ \c ->
         runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
-                        (lift . print)
+                        (lift . putStrLn . (displayPoint raw))
+
+displayPoint :: Bool -> SimplePoint -> String
+displayPoint raw (SimplePoint address timestamp payload) =
+    if raw
+        then
+            show address ++ "," ++ show timestamp ++ "," ++ show payload
+        else
+            show address ++ "  " ++ formatTimestamp timestamp ++ " " ++ formatValue payload
+  where
+    formatTimestamp :: TimeStamp -> String
+    formatTimestamp (TimeStamp t) =
+      let
+        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
+        iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
+      in
+        (take 29 iso8601) ++ "Z"
+
+{-
+    Take a stab at differentiating between raw integers and encoded floats.
+    The 2^51 is somewhat arbitrary, being one less bit than the size of the
+    significand in an IEEE 754 64-bit double. Seems safe to assume anything
+    larger than that was in fact an encoded float; 2^32 (aka 10^9) is too small
+    — we have counters bigger than that — but nothing has gone past 10^15 so
+    there seemed plenty of headroom. At the end of the day this is just a
+    convenience; if you need the real value and know its interpretation then
+    you can request raw (in this program) output or actual bytes (via reader
+    daemon).
+-}
+    formatValue :: Word64 -> String
+    formatValue v = if v > (2^(51 :: Int) :: Word64)
+        then
+            printf "% 24.6f" (wordToDouble v)
+        else
+            printf "% 17d" v
+
 
 runListContents :: String -> Origin -> IO ()
 runListContents broker origin = do
@@ -210,10 +255,10 @@ main = do
 
     linkThread $ do
         case component of
-            TimeComp ->
+            Now ->
                 runPrintDate
-            Read origin addr start end ->
-                runReadPoints broker origin addr start end
+            Read human origin addr start end ->
+                runReadPoints broker human origin addr start end
             List origin ->
                 runListContents broker origin
             Add origin addr tags ->

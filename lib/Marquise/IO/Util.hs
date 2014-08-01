@@ -31,7 +31,7 @@ import Marquise.Types
 import Vaultaire.Types
 
 -- | Convenience type synonym for readers in IO
-type IOReader a = Address -> Time -> Time -> Origin -> SocketState -> Producer' a IO ()
+type IOReader a = Address -> TimeStamp -> TimeStamp -> Origin -> SocketState -> Producer' a IO ()
 
 -- | Consistent version of enumerateOrigin in IO
 consistentEnumerateOrigin :: Origin
@@ -83,8 +83,8 @@ chunkifyReader readerFunc numChunks addr start end origin conn
 -- | Helper function for chunkifyReader
 chunkifyReader' :: IOReader a
                 -> Address
-                -> [Time]
-                -> [Time]
+                -> [TimeStamp]
+                -> [TimeStamp]
                 -> Origin
                 -> SocketState
                 -> Producer' a IO ()
@@ -100,8 +100,8 @@ chunkifyReader' readerFunc addr (start:starts) (end:ends) origin conn = do
 -- | Reads a single 'chunk' handling timeout exceptions
 readChunk :: IOReader a
           -> Address
-          -> Time
-          -> Time
+          -> TimeStamp
+          -> TimeStamp
           -> Origin
           -> SocketState
           -> IO [a]
@@ -112,8 +112,8 @@ readChunk readerFunc addr start end origin conn =
 -- | Handles a caught timeout exception and attempts to read again
 handleTimeout :: IOReader a
               -> Address
-              -> Time
-              -> Time
+              -> TimeStamp
+              -> TimeStamp
               -> Origin
               -> SocketState
               -> MarquiseTimeout

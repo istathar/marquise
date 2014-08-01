@@ -102,7 +102,13 @@ createSpoolFiles s =
         Left e -> throw e
         Right sn -> createDirectories sn >> randomSpoolFiles sn
 
--- | Deterministically convert a ByteString to an Address, this uses siphash.
+-- | Deterministically convert a ByteString to an Address by taking the
+-- most significant 63 bytes of its SipHash-2-4[0] with a zero key. The 
+-- LSB of the resulting 64-bit value is not considered part of the
+-- address; it is set when queueing writes, depending on the point type
+-- being written.
+--
+-- [0] https://131002.net/siphash/
 hashIdentifier :: ByteString -> Address
 hashIdentifier = Address . (`clearBit` 0) . unSipHash . hash iv
   where

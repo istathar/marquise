@@ -13,7 +13,7 @@
 
 module Main where
 
-import Control.Concurrent.MVar
+import Control.Concurrent.Async
 import qualified Data.ByteString.Char8 as S
 import Data.Monoid
 import Options.Applicative hiding (Parser, option)
@@ -81,8 +81,8 @@ main = do
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 
-    runMarquiseDaemon broker origin namespace quit
+    a <- runMarquiseDaemon broker origin namespace quit
 
     -- wait forever
-    readMVar quit
+    wait a
     debugM "Main.main" "End"

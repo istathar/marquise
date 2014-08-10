@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             2.4.1
+version:             2.5.0
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
@@ -78,6 +78,7 @@ executable marquised
                      hslogger,
                      optparse-applicative,
                      unix,
+                     async,
                      vaultaire-common >= 2.4.1,
                      marquise
 

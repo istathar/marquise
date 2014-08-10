@@ -22,6 +22,7 @@ where
 
 import Control.Applicative
 import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async
 import Control.Concurrent.MVar
 import Control.Exception (throw, throwIO)
 import Control.Monad
@@ -48,9 +49,9 @@ import Vaultaire.Util
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IO ()
+runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown = do
-    linkThread $ startMarquise broker origin namespace shutdown
+    async $ startMarquise broker origin namespace shutdown
 
 startMarquise :: String -> Origin -> String -> MVar () -> IO ()
 startMarquise broker origin name _ = do

@@ -54,7 +54,7 @@ runMarquiseDaemon broker origin namespace shutdown = do
     async $ startMarquise broker origin namespace shutdown
 
 startMarquise :: String -> Origin -> String -> MVar () -> IO ()
-startMarquise broker origin name _ = do
+startMarquise broker origin name shutdown = do
     infoM "Server.startMarquise" "Marquise daemon started"
     case makeSpoolName name of
         Left e -> throwIO e
@@ -65,6 +65,7 @@ startMarquise broker origin name _ = do
             linkThread (sendPoints broker origin sn)
             debugM "Server.startMarquise" "Starting contents transmitting thread"
             linkThread (sendContents broker origin sn)
+    readMVar shutdown
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
 sendPoints broker origin sn = forever $ do

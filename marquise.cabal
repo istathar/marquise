@@ -79,6 +79,8 @@ executable marquised
                      optparse-applicative,
                      unix,
                      async,
+                     binary,
+                     containers,
                      vaultaire-common >= 2.5.0,
                      marquise
 

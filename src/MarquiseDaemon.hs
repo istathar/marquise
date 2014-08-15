@@ -14,10 +14,18 @@
 module Main where
 
 import Control.Concurrent.Async
+import Control.Exception
+import qualified Data.Binary as B
+import qualified Data.Binary.Get as G
 import qualified Data.ByteString.Char8 as S
+import qualified Data.ByteString.Lazy as L
+import Data.IORef
 import Data.Monoid
+import qualified Data.Set as Set
+import Data.Word
 import Options.Applicative hiding (Parser, option)
 import qualified Options.Applicative as O
+import System.IO
 import System.Log.Logger
 
 import Marquise.Client
@@ -65,8 +73,8 @@ optionsParser Options{..} = Options <$> parseBroker
     parseCacheFile = strOption $   
            long "cache-file"
         <> short 'c'
-        <> value "/var/tmp/source_dict_hash_cache"
-        <> help "Location to read/write cached SourceDicts")
+        <> value defaultCacheLoc        
+        <> help "Location to read/write cached SourceDicts"
 
     parseNameSpace = argument str (metavar "NAMESPACE")
 
@@ -75,7 +83,20 @@ optionsParser Options{..} = Options <$> parseBroker
     mkOrigin = Origin . S.pack
 
 defaultOptions :: Options
-defaultOptions = Options "localhost" False False (Origin mempty) mempty
+defaultOptions = Options "localhost" False False (Origin mempty) mempty defaultCacheLoc
+
+defaultCacheLoc :: String
+defaultCacheLoc = "/var/tmp/source_dict_hash_cache"
+
+decodeCache :: L.ByteString -> Either String (Set.Set Word64)
+decodeCache rawData =
+    let result = G.runGetOrFail B.get rawData in
+    case result of
+        Left (_, _, e)         -> Left e
+        Right (_, _, assocList) -> Right (Set.fromList assocList)
+
+encodeCache :: Set.Set Word64 -> L.ByteString
+encodeCache cache = B.encode $ Set.toList cache
 
 main :: IO ()
 main = do
@@ -89,14 +110,23 @@ main = do
 
     quit <- initializeProgram (package ++ "-" ++ version) level
     
-    decodeCache rawData =
-        let result = G.runGetOrFail B.get rawData in
-        case result of
-            Left (_, _, e)         -> Left e
-            Right (_, _, assocList) -> Right (fromList assocList)
-
-    a <- runMarquiseDaemon broker origin namespace quit
+    initCache <- do
+        let setup = openFile cacheFile ReadWriteMode
+        let teardown = hClose
+        bracket setup teardown $ (\h -> do
+            contents <- L.hGetContents h
+            let result = decodeCache contents
+            case result of
+                Left e -> do
+                    warningM "Main.initCache" $ concat ["Error decoding hash file: ", show e, " Continuing with empty initial cache"]      
+                    return Set.empty
+                Right cache -> return cache)
+    cacheRef <- newIORef initCache
+    a <- runMarquiseDaemon broker origin namespace quit cacheRef
 
     -- wait forever
     wait a
+    finalCache <- readIORef cacheRef
+    let encodedCache  = encodeCache finalCache
+    bracket (openFile cacheFile WriteMode) (hClose) (\h -> L.hPut h encodedCache)
     debugM "Main.main" "End"

@@ -36,6 +36,7 @@ import Data.IORef
 import Data.Monoid
 import Data.Packer
 import qualified Data.Set as Set
+import Data.Word(Word64)
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
 import Marquise.Types (SpoolName (..))
@@ -51,12 +52,12 @@ import Vaultaire.Util
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IO (Async ())
-runMarquiseDaemon broker origin namespace shutdown = do
-    async $ startMarquise broker origin namespace shutdown
+runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IORef (Set.Set Word64) -> IO (Async ())
+runMarquiseDaemon broker origin namespace shutdown cacheRef = do
+    async $ startMarquise broker origin namespace shutdown cacheRef
 
-startMarquise :: String -> Origin -> String -> MVar () -> IO ()
-startMarquise broker origin name shutdown = do
+startMarquise :: String -> Origin -> String -> MVar () -> IORef (Set.Set Word64) -> IO ()
+startMarquise broker origin name shutdown cacheRef = do
     infoM "Server.startMarquise" "Marquise daemon started"
     case makeSpoolName name of
         Left e -> throwIO e
@@ -66,7 +67,7 @@ startMarquise broker origin name shutdown = do
             debugM "Server.startMarquise" "Starting point transmitting thread"
             linkThread (sendPoints broker origin sn)
             debugM "Server.startMarquise" "Starting contents transmitting thread"
-            linkThread (sendContents broker origin sn)
+            linkThread (sendContents broker origin sn cacheRef)
     readMVar shutdown
 
 sendPoints :: String -> Origin -> SpoolName -> IO ()
@@ -92,19 +93,18 @@ sendContents :: String
              -> SpoolName
              -> IORef (Set.Set Word64)
              -> IO ()
-sendContents broker origin sn cache = do
-    cacheRef <- newIORef cache
+sendContents broker origin sn cacheRef = do
     forever $ do
         debugM "Server.sendContents" "Waiting for contents"
         (bytes, seal) <- nextContents sn
         debugM "Server.sendContents" "Got contents, starting transmission pipe"
         withContentsConnection broker $ \c ->
-            runEffect $ for (parseContentsRequests bytes >-> filterSeen cacheRef)
+            runEffect $ for (parseContentsRequests bytes >-> filterSeen)
                             (sendSourceDictUpdate c)
         debugM "Server.sendContents" "Contents transmission complete, cleaning up"
         seal
   where
-    filterSeen cacheRef = do
+    filterSeen = do
         req@(ContentsRequest _ sd) <- await
         cache <- liftIO $ readIORef cacheRef
         let currHash = hashSource sd

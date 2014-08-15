@@ -32,8 +32,10 @@ import qualified Data.Attoparsec.Lazy as Parser
 import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
+import Data.IORef
 import Data.Monoid
 import Data.Packer
+import qualified Data.Set as Set
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
 import Marquise.Types (SpoolName (..))
@@ -87,17 +89,29 @@ sendPoints broker origin sn = forever $ do
 sendContents :: String
              -> Origin
              -> SpoolName
+             -> IORef (Set.Set Word64)
              -> IO ()
-sendContents broker origin sn = forever $ do
-    debugM "Server.sendContents" "Waiting for contents"
-    (bytes, seal) <- nextContents sn
-    debugM "Server.sendContents" "Got contents, starting transmission pipe"
-    withContentsConnection broker $ \c ->
-        runEffect $ for (parseContentsRequests bytes)
-                        (sendSourceDictUpdate c)
-    debugM "Server.sendContents" "Contents transmission complete, cleaning up"
-    seal
+sendContents broker origin sn cache = do
+    cacheRef <- newIORef cache
+    forever $ do
+        debugM "Server.sendContents" "Waiting for contents"
+        (bytes, seal) <- nextContents sn
+        debugM "Server.sendContents" "Got contents, starting transmission pipe"
+        withContentsConnection broker $ \c ->
+            runEffect $ for (parseContentsRequests bytes >-> filterSeen cacheRef)
+                            (sendSourceDictUpdate c)
+        debugM "Server.sendContents" "Contents transmission complete, cleaning up"
+        seal
   where
+    filterSeen cacheRef = do
+        req@(ContentsRequest _ sd) <- await
+        cache <- liftIO $ readIORef cacheRef
+        let currHash = hashSource sd
+        if (Set.member currHash cache) then
+            return ()
+        else do
+            liftIO $ writeIORef cacheRef (Set.insert currHash cache)
+            yield req
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
         liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)
         lift (updateSourceDict addr source_dict origin conn)

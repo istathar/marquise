@@ -30,7 +30,8 @@ data Options = Options
   , debug     :: Bool
   , quiet     :: Bool
   , origin    :: Origin
-  , namespace :: String }
+  , namespace :: String
+  , cacheFile :: String }
 
 helpfulParser :: Options -> O.ParserInfo Options
 helpfulParser os = info (helper <*> optionsParser os) fullDesc
@@ -41,6 +42,7 @@ optionsParser Options{..} = Options <$> parseBroker
                                     <*> parseQuiet
                                     <*> parseOrigin
                                     <*> parseNameSpace
+                                    <*> parseCacheFile
   where
     parseBroker = strOption $
            long "broker"
@@ -59,6 +61,12 @@ optionsParser Options{..} = Options <$> parseBroker
            long "quiet"
         <> short 'q'
         <> help "Only emit warnings or fatal messages"
+
+    parseCacheFile = strOption $   
+           long "cache-file"
+        <> short 'c'
+        <> value "/var/tmp/source_dict_hash_cache"
+        <> help "Location to read/write cached SourceDicts")
 
     parseNameSpace = argument str (metavar "NAMESPACE")
 
@@ -80,6 +88,12 @@ main = do
             else Normal
 
     quit <- initializeProgram (package ++ "-" ++ version) level
+    
+    decodeCache rawData =
+        let result = G.runGetOrFail B.get rawData in
+        case result of
+            Left (_, _, e)         -> Left e
+            Right (_, _, assocList) -> Right (fromList assocList)
 
     a <- runMarquiseDaemon broker origin namespace quit
 

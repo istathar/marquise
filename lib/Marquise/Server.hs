@@ -79,8 +79,9 @@ startMarquise broker origin name shutdown cache_file = do
         Right sn -> do
             debugM "Server.startMarquise" "Creating spool directories"
             createDirectories sn
-            debugM "Server.startMarquise" "Starting point transmitting thread"
+            debugM "Server.startMarquise" "Starting point transmitting thread"            
             points_loop <- async (sendPoints broker origin sn shutdown)
+            link points_loop
             debugM "Server.startMarquise" "Starting contents transmitting thread"
             final_cache <- sendContents broker origin sn init_cache shutdown
             return (points_loop, final_cache)

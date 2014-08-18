@@ -58,7 +58,7 @@ library
                      semigroups,
                      cryptohash,
                      zeromq4-haskell,
-                     vaultaire-common >= 2.5.2
+                     vaultaire-common >= 2.5.0
                                         
   ghc-options:       -O2
                      -threaded
@@ -81,7 +81,7 @@ executable marquised
                      unix,
                      async,
                      containers,
-                     vaultaire-common >= 2.5.2,
+                     vaultaire-common >= 2.5.0,
                      marquise
 
   ghc-options:       -O2
@@ -106,7 +106,7 @@ executable data
                      text,
                      attoparsec,
                      unordered-containers,
-                     vaultaire-common >= 2.5.2,
+                     vaultaire-common >= 2.5.0,
                      time,
                      old-locale,
                      data-binary-ieee754,

@@ -51,13 +51,14 @@ library
                      async,
                      hslogger,
                      hashable,
+                     binary,
                      packer,
                      filepath,
                      directory,
                      semigroups,
                      cryptohash,
                      zeromq4-haskell,
-                     vaultaire-common >= 2.5.0
+                     vaultaire-common >= 2.5.2
                                         
   ghc-options:       -O2
                      -threaded
@@ -79,9 +80,8 @@ executable marquised
                      optparse-applicative,
                      unix,
                      async,
-                     binary,
                      containers,
-                     vaultaire-common >= 2.5.0,
+                     vaultaire-common >= 2.5.2,
                      marquise
 
   ghc-options:       -O2
@@ -106,7 +106,7 @@ executable data
                      text,
                      attoparsec,
                      unordered-containers,
-                     vaultaire-common >= 2.5.0,
+                     vaultaire-common >= 2.5.2,
                      time,
                      old-locale,
                      data-binary-ieee754,

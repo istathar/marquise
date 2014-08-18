@@ -20,11 +20,12 @@ module Marquise.Server
 )
 where
 
+import Data.Maybe
 import Control.Applicative
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
-import Control.Exception (throw, throwIO)
+import Control.Exception (throw, throwIO, bracket)
 import Control.Monad
 import Data.Attoparsec.ByteString.Lazy (Parser)
 import Data.Attoparsec.Combinator (eitherP)
@@ -32,56 +33,78 @@ import qualified Data.Attoparsec.Lazy as Parser
 import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
-import Data.IORef
+import System.IO
 import Data.Monoid
 import Data.Packer
-import qualified Data.Set as Set
-import Data.Word(Word64)
+import Control.Monad.State.Lazy
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
 import Marquise.Types (SpoolName (..))
 import Pipes
+import Pipes.Lift
 import Pipes.Attoparsec (parsed)
 import qualified Pipes.ByteString as PB
 import Pipes.Group (FreeF (..), FreeT (..))
 import qualified Pipes.Group as PG
 import System.Log.Logger
 import Vaultaire.Types
-import Vaultaire.Util
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-runMarquiseDaemon :: String -> Origin -> String -> MVar () -> IORef (Set.Set Word64) -> IO (Async ())
-runMarquiseDaemon broker origin namespace shutdown cacheRef = do
-    async $ startMarquise broker origin namespace shutdown cacheRef
+runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> IO (Async ())
+runMarquiseDaemon broker origin namespace shutdown cache_file = do
+    async $ startMarquise broker origin namespace shutdown cache_file
 
-startMarquise :: String -> Origin -> String -> MVar () -> IORef (Set.Set Word64) -> IO ()
-startMarquise broker origin name shutdown cacheRef = do
+startMarquise :: String -> Origin -> String -> MVar () -> String -> IO ()
+startMarquise broker origin name shutdown cache_file = do
+    infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
+    init_cache <- do
+        bracket (openFile cache_file ReadWriteMode) hClose $ \h -> do
+            result <- fromWire <$> S.hGetContents h
+            case result of
+                Left e -> do
+                    warningM "Server.startMarquise" $
+                        concat ["Error decoding hash file: "
+                               , show e
+                               , " Continuing with empty initial cache"
+                               ]
+                    return $ emptySourceCache
+                Right cache -> return cache
+
     infoM "Server.startMarquise" "Marquise daemon started"
-    case makeSpoolName name of
+
+    (points_loop, final_cache) <- case makeSpoolName name of
         Left e -> throwIO e
         Right sn -> do
             debugM "Server.startMarquise" "Creating spool directories"
             createDirectories sn
             debugM "Server.startMarquise" "Starting point transmitting thread"
-            linkThread (sendPoints broker origin sn)
+            points_loop <- async (sendPoints broker origin sn shutdown)
             debugM "Server.startMarquise" "Starting contents transmitting thread"
-            linkThread (sendContents broker origin sn cacheRef)
-    readMVar shutdown
+            final_cache <- sendContents broker origin sn init_cache shutdown
+            return (points_loop, final_cache)
 
-sendPoints :: String -> Origin -> SpoolName -> IO ()
-sendPoints broker origin sn = forever $ do
-    debugM "Server.sendPoints" "Waiting for points"
-    (bytes, seal) <- nextPoints sn
+    debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
+    S.writeFile cache_file $ toWire final_cache
 
-    debugM "Server.sendPoints" "Got points, starting transmission pipe"
-    runEffect $ for (breakInToChunks bytes) sendChunk
+    debugM "Server.startMarquise" "Waiting for points loop thread"
+    wait points_loop
 
-    debugM "Server.sendPoints" "Transmission complete, cleaning up"
-    seal
+sendPoints :: String -> Origin -> SpoolName -> MVar () -> IO ()
+sendPoints broker origin sn shutdown = do
+    next <- nextPoints sn
+    case next of
+        Just (bytes, seal) -> do
+            debugM "Server.sendPoints" "Got points, starting transmission pipe"
+            runEffect $ for (breakInToChunks bytes) sendChunk
+            debugM "Server.sendPoints" "Transmission complete, cleaning up"
+            seal
+        Nothing ->
+            threadDelay idleTime
 
-    threadDelay idleTime
+    done <- isJust <$> tryReadMVar shutdown
+    unless done (sendPoints broker origin sn shutdown)
   where
     sendChunk chunk = do
         let size = show . S.length $ chunk
@@ -91,27 +114,36 @@ sendPoints broker origin sn = forever $ do
 sendContents :: String
              -> Origin
              -> SpoolName
-             -> IORef (Set.Set Word64)
-             -> IO ()
-sendContents broker origin sn cacheRef = do
-    forever $ do
-        debugM "Server.sendContents" "Waiting for contents"
-        (bytes, seal) <- nextContents sn
-        debugM "Server.sendContents" "Got contents, starting transmission pipe"
-        withContentsConnection broker $ \c ->
-            runEffect $ for (parseContentsRequests bytes >-> filterSeen)
-                            (sendSourceDictUpdate c)
-        debugM "Server.sendContents" "Contents transmission complete, cleaning up"
-        seal
+             -> SourceDictCache
+             -> MVar ()
+             -> IO SourceDictCache
+sendContents broker origin sn initial shutdown = do
+        next <- nextContents sn
+        final <- case next of
+            Just (bytes, seal) ->  do
+                debugM "Server.sendContents" "Got contents, starting transmission pipe"
+                ((), final') <- withContentsConnection broker $ \c ->
+                    runEffect $ for (runStateP initial (parseContentsRequests bytes >-> filterSeen))
+                                    (sendSourceDictUpdate c)
+                debugM "Server.sendContents" "Contents transmission complete, cleaning up"
+                seal
+                return final'
+            Nothing -> do
+                threadDelay idleTime
+                return initial
+
+        done <- isJust <$> tryReadMVar shutdown
+        if done
+            then return final
+            else sendContents broker origin sn final shutdown
   where
-    filterSeen = do
-        req@(ContentsRequest _ sd) <- await
-        cache <- liftIO $ readIORef cacheRef
+    filterSeen = forever $ do
+        req@(ContentsRequest addr sd) <- await
+        cache <- get
         let currHash = hashSource sd
-        if (Set.member currHash cache) then
-            return ()
-        else do
-            liftIO $ writeIORef cacheRef (Set.insert currHash cache)
+        if (memberSourceCache currHash cache) then
+            liftIO $ debugM "Server.filterSeen" $ "Seen sd with addr " ++ show addr ++ " before, ignoring"   else do
+            put (insertSourceCache currHash cache)
             yield req
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
         liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)

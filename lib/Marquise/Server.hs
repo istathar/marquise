@@ -25,7 +25,7 @@ import Control.Applicative
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
-import Control.Exception (throw, throwIO, bracket)
+import Control.Exception (throw, throwIO)
 import Control.Monad
 import Data.Attoparsec.ByteString.Lazy (Parser)
 import Data.Attoparsec.Combinator (eitherP)
@@ -53,25 +53,23 @@ data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> IO (Async ())
-runMarquiseDaemon broker origin namespace shutdown cache_file = do
+runMarquiseDaemon broker origin namespace shutdown cache_file = 
     async $ startMarquise broker origin namespace shutdown cache_file
 
 startMarquise :: String -> Origin -> String -> MVar () -> String -> IO ()
 startMarquise broker origin name shutdown cache_file = do
     infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
-    init_cache <- do
-        bracket (openFile cache_file ReadWriteMode) hClose $ \h -> do
-            result <- fromWire <$> S.hGetContents h
-            case result of
-                Left e -> do
-                    warningM "Server.startMarquise" $
-                        concat ["Error decoding hash file: "
-                               , show e
-                               , " Continuing with empty initial cache"
-                               ]
-                    return $ emptySourceCache
-                Right cache -> return cache
-
+    init_cache <- withFile cache_file ReadWriteMode $ \h -> do
+        result <- fromWire <$> S.hGetContents h
+        case result of
+            Left e -> do
+                warningM "Server.startMarquise" $
+                    concat ["Error decoding hash file: "
+                           , show e
+                           , " Continuing with empty initial cache"
+                           ]
+                return emptySourceCache
+            Right cache -> return cache
     infoM "Server.startMarquise" "Marquise daemon started"
 
     (points_loop, final_cache) <- case makeSpoolName name of
@@ -142,7 +140,7 @@ sendContents broker origin sn initial shutdown = do
         req@(ContentsRequest addr sd) <- await
         cache <- get
         let currHash = hashSource sd
-        if (memberSourceCache currHash cache) then
+        if memberSourceCache currHash cache then
             liftIO $ debugM "Server.filterSeen" $ "Seen sd with addr " ++ show addr ++ " before, ignoring"   else do
             put (insertSourceCache currHash cache)
             yield req

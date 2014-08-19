@@ -84,11 +84,10 @@ main :: IO ()
 main = do
     Options{..} <- execParser . helpfulParser $ defaultOptions
 
-    let level = if debug
-        then Debug
-        else if quiet
-            then Quiet
-            else Normal
+    let level
+          | debug     = Debug
+          | quiet     = Quiet
+          | otherwise = Normal
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 

@@ -30,7 +30,8 @@ data Options = Options
   , debug     :: Bool
   , quiet     :: Bool
   , origin    :: Origin
-  , namespace :: String }
+  , namespace :: String
+  , cacheFile :: String }
 
 helpfulParser :: Options -> O.ParserInfo Options
 helpfulParser os = info (helper <*> optionsParser os) fullDesc
@@ -41,6 +42,7 @@ optionsParser Options{..} = Options <$> parseBroker
                                     <*> parseQuiet
                                     <*> parseOrigin
                                     <*> parseNameSpace
+                                    <*> parseCacheFile
   where
     parseBroker = strOption $
            long "broker"
@@ -60,6 +62,12 @@ optionsParser Options{..} = Options <$> parseBroker
         <> short 'q'
         <> help "Only emit warnings or fatal messages"
 
+    parseCacheFile = strOption $   
+           long "cache-file"
+        <> short 'c'
+        <> value defaultCacheLoc        
+        <> help "Location to read/write cached SourceDicts"
+
     parseNameSpace = argument str (metavar "NAMESPACE")
 
     parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
@@ -67,21 +75,23 @@ optionsParser Options{..} = Options <$> parseBroker
     mkOrigin = Origin . S.pack
 
 defaultOptions :: Options
-defaultOptions = Options "localhost" False False (Origin mempty) mempty
+defaultOptions = Options "localhost" False False (Origin mempty) mempty defaultCacheLoc
+
+defaultCacheLoc :: String
+defaultCacheLoc = "/var/spool/marquise/source_dict_hash_cache"
 
 main :: IO ()
 main = do
     Options{..} <- execParser . helpfulParser $ defaultOptions
 
-    let level = if debug
-        then Debug
-        else if quiet
-            then Quiet
-            else Normal
+    let level
+          | debug     = Debug
+          | quiet     = Quiet
+          | otherwise = Normal
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 
-    a <- runMarquiseDaemon broker origin namespace quit
+    a <- runMarquiseDaemon broker origin namespace quit cacheFile
 
     -- wait forever
     wait a

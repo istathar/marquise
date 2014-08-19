@@ -27,15 +27,22 @@ suite =
             appendPoints sf2 "FBBBBBBBAAAAAAAACCCCCCCC"
             appendContents sf1 "contents"
 
-            (bytes1,close_f1) <- nextPoints ns1
-            (bytes2,close_f2) <- nextPoints ns2
-            (contents,close_f3) <- nextContents ns1
+            (bytes1,close_f1)   <- loop $ nextPoints ns1
+            (bytes2,close_f2)   <- loop $ nextPoints ns2
+            (contents,close_f3) <- loop $ nextContents ns1
 
             bytes1 `shouldBe` "BBBBBBBBAAAAAAAACCCCCCCC\
                               \DBBBBBBBAAAAAAAACCCCCCCC"
             bytes2 `shouldBe` "FBBBBBBBAAAAAAAACCCCCCCC"
+
             close_f1
             close_f2
 
             contents `shouldBe` "contents"
             close_f3
+  where
+    loop x = do
+        x' <- x
+        case x' of
+            Just result -> return result
+            Nothing -> loop x

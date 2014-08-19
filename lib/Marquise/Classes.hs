@@ -44,8 +44,8 @@ class Monad m => MarquiseSpoolFileMonad m where
     -- has been completely sent.
     --
     -- May block until something is actually spooled up.
-    nextPoints :: SpoolName -> m (LB.ByteString, m ())
-    nextContents :: SpoolName -> m (LB.ByteString, m ())
+    nextPoints :: SpoolName -> m (Maybe (LB.ByteString, m ()))
+    nextContents :: SpoolName -> m (Maybe (LB.ByteString, m ()))
 
     -- | Close any open handles and flush all previously appended datum to disk
     close :: SpoolFiles -> m ()

@@ -61,7 +61,7 @@ newRandomSpoolFile path = do
 
 -- | Grab the next avaliable spool file, providing that file as a lazy
 -- bytestring and an action to close it, wiping the file.
-nextSpoolContents :: FilePath -> FilePath -> IO (L.ByteString, IO ())
+nextSpoolContents :: FilePath -> FilePath -> IO (Maybe (L.ByteString, IO ()))
 nextSpoolContents new_dir cur_dir = do
     -- First check for any work already in the work spool dir.
     work <- tryCurDir cur_dir
@@ -69,12 +69,12 @@ nextSpoolContents new_dir cur_dir = do
         Nothing ->
             -- No existing work, get some new work out of the spool
             -- directory then.
-            rotate new_dir cur_dir >> nextSpoolContents new_dir cur_dir
+            rotate new_dir cur_dir >> return Nothing
         Just (fp, lock_fd) -> do
             threadDelay 100000 -- Ensure that any slow writes are done
             contents <- LB.readFile fp
             let close_f = removeLink fp >> closeFd lock_fd
-            return (contents, close_f)
+            return $ Just (contents, close_f)
 
 -- | Check the work directory for any outstanding work, if there is a potential
 -- candidate, lock it. If that fails, try the next.
@@ -90,22 +90,17 @@ tryCurDir cur_dir =
             Nothing -> return Nothing
             Just lock_fd -> return . Just $ (fp, lock_fd)
 
--- Attempt to rotate all files from src folder to dst folder. If nothing is ready,
--- wait for a second and retry.
+-- Attempt to rotate all files from src folder to dst folder.
 rotate :: FilePath -> FilePath -> IO ()
 rotate src dst = do
     candidates <- getAbsoluteDirectoryFiles src
-    if null candidates
-        then wait >> rotate src dst
-        else mapM_ doMove candidates
+    unless (null candidates)
+           (mapM_ doMove candidates)
   where
     doMove src_file = do
         (new_path, h) <- mkstemp dst
         hClose h
         renameFile src_file new_path
-
-    wait = threadDelay 1000000
-
 
 getAbsoluteDirectoryFiles :: FilePath -> IO [FilePath]
 getAbsoluteDirectoryFiles =

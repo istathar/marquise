@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             2.6.0
+version:             2.6.1
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>

@@ -29,26 +29,26 @@ data Options = Options
   { broker    :: String
   , debug     :: Bool
   , quiet     :: Bool
-  , origin    :: Origin
+  , origin    :: String
   , namespace :: String
   , cacheFile :: String }
 
-helpfulParser :: Options -> O.ParserInfo Options
-helpfulParser os = info (helper <*> optionsParser os) fullDesc
+helpfulParser :: O.ParserInfo Options
+helpfulParser = info (helper <*> optionsParser) fullDesc
 
-optionsParser :: Options -> O.Parser Options
-optionsParser Options{..} = Options <$> parseBroker
-                                    <*> parseDebug
-                                    <*> parseQuiet
-                                    <*> parseOrigin
-                                    <*> parseNameSpace
-                                    <*> parseCacheFile
+optionsParser :: O.Parser Options
+optionsParser = Options <$> parseBroker
+                        <*> parseDebug
+                        <*> parseQuiet
+                        <*> parseOrigin
+                        <*> parseNameSpace
+                        <*> parseCacheFile
   where
     parseBroker = strOption $
            long "broker"
         <> short 'b'
         <> metavar "BROKER"
-        <> value broker
+        <> value "localhost"
         <> showDefault
         <> help "Vault broker host name or IP address"
 
@@ -62,27 +62,22 @@ optionsParser Options{..} = Options <$> parseBroker
         <> short 'q'
         <> help "Only emit warnings or fatal messages"
 
-    parseCacheFile = strOption $   
+    parseCacheFile = strOption $
            long "cache-file"
         <> short 'c'
-        <> value defaultCacheLoc        
+        <> value ""
         <> help "Location to read/write cached SourceDicts"
 
     parseNameSpace = argument str (metavar "NAMESPACE")
 
-    parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
+    parseOrigin = argument str (metavar "ORIGIN")
 
-    mkOrigin = Origin . S.pack
-
-defaultOptions :: Options
-defaultOptions = Options "localhost" False False (Origin mempty) mempty defaultCacheLoc
-
-defaultCacheLoc :: String
-defaultCacheLoc = "/var/spool/marquise/source_dict_hash_cache"
+defaultCacheLoc :: String -> String
+defaultCacheLoc o = "/var/spool/marquise/source_dict_hash_cache_" ++ o
 
 main :: IO ()
 main = do
-    Options{..} <- execParser . helpfulParser $ defaultOptions
+    Options{..} <- execParser $ helpfulParser
 
     let level
           | debug     = Debug
@@ -91,7 +86,11 @@ main = do
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 
-    a <- runMarquiseDaemon broker origin namespace quit cacheFile
+    cacheFile' <- return $ case cacheFile of
+        "" -> defaultCacheLoc origin
+        x  -> x
+
+    a <- runMarquiseDaemon broker (Origin $ S.pack origin) namespace quit cacheFile'
 
     -- wait forever
     wait a

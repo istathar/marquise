@@ -29,9 +29,9 @@ data Options = Options
   { broker    :: String
   , debug     :: Bool
   , quiet     :: Bool
+  , cacheFile :: String
   , origin    :: String
-  , namespace :: String
-  , cacheFile :: String }
+  , namespace :: String }
 
 helpfulParser :: O.ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -40,9 +40,9 @@ optionsParser :: O.Parser Options
 optionsParser = Options <$> parseBroker
                         <*> parseDebug
                         <*> parseQuiet
+                        <*> parseCacheFile
                         <*> parseOrigin
                         <*> parseNameSpace
-                        <*> parseCacheFile
   where
     parseBroker = strOption $
            long "broker"

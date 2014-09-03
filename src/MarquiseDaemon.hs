@@ -26,12 +26,13 @@ import Package (package, version)
 import Vaultaire.Program
 
 data Options = Options
-  { broker    :: String
-  , debug     :: Bool
-  , quiet     :: Bool
-  , origin    :: String
-  , namespace :: String
-  , cacheFile :: String }
+  { broker      :: String
+  , debug       :: Bool
+  , quiet       :: Bool
+  , showVersion :: Bool
+  , origin      :: String
+  , namespace   :: String
+  , cacheFile   :: String }
 
 helpfulParser :: O.ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -40,6 +41,7 @@ optionsParser :: O.Parser Options
 optionsParser = Options <$> parseBroker
                         <*> parseDebug
                         <*> parseQuiet
+                        <*> parseVersion
                         <*> parseOrigin
                         <*> parseNameSpace
                         <*> parseCacheFile
@@ -68,9 +70,15 @@ optionsParser = Options <$> parseBroker
         <> value ""
         <> help "Location to read/write cached SourceDicts"
 
+    parseVersion = switch $
+           long "version"
+        <> short 'v'
+        <> help "Show version and exit"
+
     parseNameSpace = argument str (metavar "NAMESPACE")
 
     parseOrigin = argument str (metavar "ORIGIN")
+
 
 defaultCacheLoc :: String -> String
 defaultCacheLoc o = "/var/spool/marquise/source_dict_hash_cache_" ++ o
@@ -79,19 +87,22 @@ main :: IO ()
 main = do
     Options{..} <- execParser $ helpfulParser
 
-    let level
-          | debug     = Debug
-          | quiet     = Quiet
-          | otherwise = Normal
+    if showVersion then
+        putStrLn $ package ++ "-" ++ version
+    else do
+        let level
+              | debug     = Debug
+              | quiet     = Quiet
+              | otherwise = Normal
 
-    quit <- initializeProgram (package ++ "-" ++ version) level
+        quit <- initializeProgram (package ++ "-" ++ version) level
 
-    cacheFile' <- return $ case cacheFile of
-        "" -> defaultCacheLoc origin
-        x  -> x
+        cacheFile' <- return $ case cacheFile of
+            "" -> defaultCacheLoc origin
+            x  -> x
 
-    a <- runMarquiseDaemon broker (Origin $ S.pack origin) namespace quit cacheFile'
+        a <- runMarquiseDaemon broker (Origin $ S.pack origin) namespace quit cacheFile'
 
-    -- wait forever
-    wait a
-    debugM "Main.main" "End"
+        -- wait forever
+        wait a
+        debugM "Main.main" "End"

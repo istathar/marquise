@@ -1,5 +1,5 @@
-Source: haskell-marquise
-Maintainer: Anchor Engineering <engineering@anchor.com.au>
+Source: marquise
+Maintainer: Anchor Systems (package signing key) <support@anchor.net.au>
 Priority: optional
 Section: haskell
 Build-Depends: debhelper (>= 7.0)
@@ -7,67 +7,7 @@ Build-Depends: debhelper (>= 7.0)
                , cdbs
                , ghc
                , ghc-prof
-               , libghc-async-dev
-               , libghc-async-prof
-               , libghc-attoparsec-dev
-               , libghc-attoparsec-prof
-               , libghc-cryptohash-dev
-               , libghc-cryptohash-prof
-               , libghc-data-binary-ieee754-dev
-               , libghc-data-binary-ieee754-prof
-               , libghc-hashable-dev
-               , libghc-hashable-prof
-               , libghc-hslogger-dev
-               , libghc-hslogger-prof
-               , libghc-mtl-dev
-               , libghc-mtl-prof
-               , libghc-optparse-applicative-dev (>= 0.9.0)
-               , libghc-optparse-applicative-dev (<< 0.10.0)
-               , libghc-optparse-applicative-prof (>= 0.9.0)
-               , libghc-optparse-applicative-prof (<< 0.10.0)
-               , libghc-packer-dev
-               , libghc-packer-prof
-               , libghc-pipes-dev
-               , libghc-pipes-prof
-               , libghc-pipes-attoparsec-dev
-               , libghc-pipes-attoparsec-prof
-               , libghc-pipes-bytestring-dev
-               , libghc-pipes-bytestring-prof
-               , libghc-pipes-group-dev
-               , libghc-pipes-group-prof
-               , libghc-semigroups-dev
-               , libghc-semigroups-prof
-               , libghc-siphash-dev
-               , libghc-siphash-prof
-               , libghc-text-dev
-               , libghc-text-prof
-               , libghc-unordered-containers-dev
-               , libghc-unordered-containers-prof
-               , libghc-vaultaire-common-dev (>= 2.5.0)
-               , libghc-vaultaire-common-prof (>= 2.5.0)
-               , libghc-zeromq4-haskell-dev
-               , libghc-zeromq4-haskell-prof
 Build-Depends-Indep: ghc-doc
-                     , libghc-async-doc
-                     , libghc-attoparsec-doc
-                     , libghc-cryptohash-doc
-                     , libghc-data-binary-ieee754-doc
-                     , libghc-hashable-doc
-                     , libghc-hslogger-doc
-                     , libghc-mtl-doc
-                     , libghc-optparse-applicative-doc (>= 0.9.0)
-                     , libghc-optparse-applicative-doc (<< 0.10.0)
-                     , libghc-packer-doc
-                     , libghc-pipes-doc
-                     , libghc-pipes-attoparsec-doc
-                     , libghc-pipes-bytestring-doc
-                     , libghc-pipes-group-doc
-                     , libghc-semigroups-doc
-                     , libghc-siphash-doc
-                     , libghc-text-doc
-                     , libghc-unordered-containers-doc
-                     , libghc-vaultaire-common-doc (>= 2.5.0)
-                     , libghc-zeromq4-haskell-doc
 
 Package: libghc-marquise-dev
 Architecture: any
@@ -81,8 +21,7 @@ Provides: ${haskell:Provides}
 Replaces: ${haskell:Replaces}
 Description: Client library for Vaultaire
  .
- This package provides a library for the Haskell programming language.
- See http:///www.haskell.org/ for more information on Haskell.
+ This package provides the core Marquise library for Haskell.
 
 Package: libghc-marquise-prof
 Architecture: any
@@ -96,8 +35,8 @@ Provides: ${haskell:Provides}
 Replaces: ${haskell:Replaces}
 Description: Client library for Vaultaire
  .
- This package provides a library for the Haskell programming language, compiled
- for profiling.  See http:///www.haskell.org/ for more information on Haskell.
+ This package provides the core Marquise library for Haskell, compiled for
+ profiling.
 
 Package: libghc-marquise-doc
 Architecture: all
@@ -112,9 +51,7 @@ Provides: ${haskell:Provides}
 Replaces: ${haskell:Replaces}
 Description: Client library for Vaultaire
  .
- This package provides the documentation for a library for the Haskell
- programming language.
- See http:///www.haskell.org/ for more information on Haskell.
+ This package provides the documentation for the Marquise library.
 
 Package: haskell-marquise-utils
 Architecture: any
@@ -127,6 +64,6 @@ Suggests: ${haskell:Suggests}
 Conflicts: ${haskell:Conflicts}
 Provides: ${haskell:Provides}
 Replaces: ${haskell:Replaces}
-Description: Client library for Vaultaire
+Description: Client for Vaultaire
  .
- Files associated with the marquise package.
+ This package provides the `marquised` and `data` daemons.

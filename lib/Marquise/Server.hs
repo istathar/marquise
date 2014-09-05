@@ -123,7 +123,7 @@ sendContents :: String
              -> IO SourceDictCache
 sendContents broker origin sn initial cache_file cache_flush_period flush_time shutdown = do
         next <- nextContents sn
-        final <- case next of
+        (final, newFlushTime) <- case next of
             Just (bytes, seal) ->  do
                 debugM "Server.sendContents" "Got contents, starting transmission pipe"
                 ((), final') <- withContentsConnection broker $ \c ->
@@ -131,24 +131,25 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                                     (sendSourceDictUpdate c)
                 debugM "Server.sendContents" "Contents transmission complete, cleaning up"
                 seal
-                return final'
+                currTime <- getCurrentTime
+                newFlushTime' <- if currTime > flush_time
+                    then do
+                        let
+                        debugM "Server.setContents" "Performing periodic cache writeout"
+                        S.writeFile cache_file $ toWire final' 
+                        return $ addUTCTime (fromInteger cache_flush_period) currTime
+                    else return flush_time
+                return (final', newFlushTime')
             Nothing -> do
                 threadDelay idleTime
-                return initial
+                return (initial, flush_time)
 
 
         done <- isJust <$> tryReadMVar shutdown
-        currTime <- getCurrentTime
-        new_flush_time <- if currTime > flush_time
-            then do
-                let
-                debugM "Server.setContents" "Performing periodic cache writeout"
-                S.writeFile cache_file $ toWire final 
-                return $ addUTCTime (fromInteger cache_flush_period) currTime
-            else return flush_time
+
         if done
             then return final
-            else sendContents broker origin sn final cache_file cache_flush_period new_flush_time shutdown
+            else sendContents broker origin sn final cache_file cache_flush_period newFlushTime shutdown
   where
     filterSeen = forever $ do
         req@(ContentsRequest addr sd) <- await

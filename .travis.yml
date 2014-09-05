@@ -20,10 +20,9 @@ before_install:
   - cd ..
   - sudo mkdir -p /var/spool/marquise/
   - sudo chown $USER /var/spool/marquise/
-  - 'echo "Welcome to $(pwd), population: You."'
-  - 'sed -r -i "s,^(remote-repo: hackage.haskell.org.*)$,\1\nremote-repo: hackage.syd1.anchor.net.au:http://hackage.syd1.anchor.net.au/packages/archive," ~/.cabal/config'
 
 install:
+  - 'sed -r -i "s,^(remote-repo: hackage.haskell.org.*)$,\1\nremote-repo: hackage.syd1.anchor.net.au:http://hackage.syd1.anchor.net.au/packages/archive," /home/travis/.cabal/config'
   - 'cabal-$CABALVER update'
   -  cabal sandbox init
   -  git clone https://github.com/anchor/vaultaire-common.git ../vaultaire-common/

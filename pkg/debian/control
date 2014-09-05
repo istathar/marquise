@@ -1,0 +1,53 @@
+Source: marquise
+Maintainer: Anchor Systems (package signing key) <support@anchor.net.au>
+Priority: optional
+Section: haskell
+Build-Depends: debhelper (>= 7.0)
+               , haskell-devscripts (>= 0.8)
+               , cdbs
+               , ghc
+Build-Depends-Indep: ghc-doc
+
+Package: libghc-marquise-dev
+Architecture: any
+Depends: ${shlibs:Depends}
+         , ${haskell:Depends}
+         , ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Conflicts: ${haskell:Conflicts}
+Provides: ${haskell:Provides}
+Replaces: ${haskell:Replaces}
+Description: Client library for Vaultaire
+ .
+ This package provides the core Marquise library for Haskell.
+
+Package: libghc-marquise-doc
+Architecture: all
+Section: doc
+Depends: ${shlibs:Depends}
+         , ${haskell:Depends}
+         , ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Conflicts: ${haskell:Conflicts}
+Provides: ${haskell:Provides}
+Replaces: ${haskell:Replaces}
+Description: Client library for Vaultaire
+ .
+ This package provides the documentation for the Marquise library.
+
+Package: haskell-marquise-utils
+Architecture: any
+Section: misc
+Depends: ${shlibs:Depends}
+         , ${haskell:Depends}
+         , ${misc:Depends}
+Recommends: ${haskell:Recommends}
+Suggests: ${haskell:Suggests}
+Conflicts: ${haskell:Conflicts}
+Provides: ${haskell:Provides}
+Replaces: ${haskell:Replaces}
+Description: Client for Vaultaire
+ .
+ This package provides the `marquised` and `data` daemons.

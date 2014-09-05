@@ -21,7 +21,7 @@ before_install:
   - sudo mkdir -p /var/spool/marquise/
   - sudo chown $USER /var/spool/marquise/
   - echo "Welcome to $(pwd), population: You."
-  - sed -r -i 's,^(remote-repo: hackage.haskell.org.*)$,\1\nremote-repo: hackage.syd1.anchor.net.au:http://hackage.syd1.anchor.net.au/packages/archive,' ~/.cabal/config
+  - 'sed -r -i "s,^(remote-repo: hackage.haskell.org.*)$,\1\nremote-repo: hackage.syd1.anchor.net.au:http://hackage.syd1.anchor.net.au/packages/archive," ~/.cabal/config'
 
 install:
   - 'cabal-$CABALVER update'

@@ -33,6 +33,7 @@ import qualified Data.Attoparsec.Lazy as Parser
 import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
+import Data.Time.Clock
 import System.IO
 import Data.Monoid
 import Data.Packer
@@ -52,12 +53,12 @@ import Vaultaire.Types
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
-runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> IO (Async ())
-runMarquiseDaemon broker origin namespace shutdown cache_file = 
-    async $ startMarquise broker origin namespace shutdown cache_file
+runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
+runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period = 
+    async $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
 
-startMarquise :: String -> Origin -> String -> MVar () -> String -> IO ()
-startMarquise broker origin name shutdown cache_file = do
+startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> IO ()
+startMarquise broker origin name shutdown cache_file cache_flush_period = do
     infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
     init_cache <- withFile cache_file ReadWriteMode $ \h -> do
         result <- fromWire <$> S.hGetContents h
@@ -81,7 +82,8 @@ startMarquise broker origin name shutdown cache_file = do
             points_loop <- async (sendPoints broker origin sn shutdown)
             link points_loop
             debugM "Server.startMarquise" "Starting contents transmitting thread"
-            final_cache <- sendContents broker origin sn init_cache cache_file shutdown
+            currTime <- getCurrentTime
+            final_cache <- sendContents broker origin sn init_cache cache_file cache_flush_period currTime shutdown
             return (points_loop, final_cache)
 
     debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
@@ -115,9 +117,11 @@ sendContents :: String
              -> SpoolName
              -> SourceDictCache
              -> String
+             -> Integer
+             -> UTCTime
              -> MVar ()
              -> IO SourceDictCache
-sendContents broker origin sn initial cache_file shutdown = do
+sendContents broker origin sn initial cache_file cache_flush_period flush_time shutdown = do
         next <- nextContents sn
         final <- case next of
             Just (bytes, seal) ->  do
@@ -132,11 +136,19 @@ sendContents broker origin sn initial cache_file shutdown = do
                 threadDelay idleTime
                 return initial
 
-        S.writeFile cache_file $ toWire final
+
         done <- isJust <$> tryReadMVar shutdown
+        currTime <- getCurrentTime
+        new_flush_time <- if currTime > flush_time
+            then do
+                let
+                debugM "Server.setContents" "Performing periodic cache writeout"
+                S.writeFile cache_file $ toWire final 
+                return $ addUTCTime (fromInteger cache_flush_period) currTime
+            else return flush_time
         if done
             then return final
-            else sendContents broker origin sn final cache_file shutdown
+            else sendContents broker origin sn final cache_file cache_flush_period new_flush_time shutdown
   where
     filterSeen = forever $ do
         req@(ContentsRequest addr sd) <- await

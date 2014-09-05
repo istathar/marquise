@@ -22,6 +22,7 @@ before_install:
   - sudo chown $USER /var/spool/marquise/
 
 install:
+  - 'sed -r -i "s,^(remote-repo: hackage.haskell.org.*)$,\1\nremote-repo: hackage.syd1.anchor.net.au:http://hackage.syd1.anchor.net.au/packages/archive," /home/travis/.cabal/config'
   - 'cabal-$CABALVER update'
   -  cabal sandbox init
   -  git clone https://github.com/anchor/vaultaire-common.git ../vaultaire-common/

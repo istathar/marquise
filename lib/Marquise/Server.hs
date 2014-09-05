@@ -81,7 +81,7 @@ startMarquise broker origin name shutdown cache_file = do
             points_loop <- async (sendPoints broker origin sn shutdown)
             link points_loop
             debugM "Server.startMarquise" "Starting contents transmitting thread"
-            final_cache <- sendContents broker origin sn init_cache shutdown
+            final_cache <- sendContents broker origin sn init_cache cache_file shutdown
             return (points_loop, final_cache)
 
     debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
@@ -114,9 +114,10 @@ sendContents :: String
              -> Origin
              -> SpoolName
              -> SourceDictCache
+             -> String
              -> MVar ()
              -> IO SourceDictCache
-sendContents broker origin sn initial shutdown = do
+sendContents broker origin sn initial cache_file shutdown = do
         next <- nextContents sn
         final <- case next of
             Just (bytes, seal) ->  do
@@ -131,17 +132,19 @@ sendContents broker origin sn initial shutdown = do
                 threadDelay idleTime
                 return initial
 
+        S.writeFile cache_file $ toWire final
         done <- isJust <$> tryReadMVar shutdown
         if done
             then return final
-            else sendContents broker origin sn final shutdown
+            else sendContents broker origin sn final cache_file shutdown
   where
     filterSeen = forever $ do
         req@(ContentsRequest addr sd) <- await
         cache <- get
         let currHash = hashSource sd
         if memberSourceCache currHash cache then
-            liftIO $ debugM "Server.filterSeen" $ "Seen sd with addr " ++ show addr ++ " before, ignoring"   else do
+            liftIO $ debugM "Server.filterSeen" $ "Seen sd with addr " ++ show addr ++ " before, ignoring"
+        else do
             put (insertSourceCache currHash cache)
             yield req
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do

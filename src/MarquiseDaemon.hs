@@ -26,12 +26,13 @@ import Package (package, version)
 import Vaultaire.Program
 
 data Options = Options
-  { broker    :: String
-  , debug     :: Bool
-  , quiet     :: Bool
-  , cacheFile :: String
-  , origin    :: String
-  , namespace :: String }
+  { broker         :: String
+  , debug          :: Bool
+  , quiet          :: Bool
+  , cacheFile      :: String
+  , cacheFlushFreq :: Integer
+  , origin         :: String
+  , namespace      :: String }
 
 helpfulParser :: O.ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -41,6 +42,7 @@ optionsParser = Options <$> parseBroker
                         <*> parseDebug
                         <*> parseQuiet
                         <*> parseCacheFile
+                        <*> parseCacheFlushFreq
                         <*> parseOrigin
                         <*> parseNameSpace
   where
@@ -68,6 +70,17 @@ optionsParser = Options <$> parseBroker
         <> value ""
         <> help "Location to read/write cached SourceDicts"
 
+    -- This doesn't mean that marquised will rigorously flush the cache
+    -- every `t` seconds. To clarify: marquised consideres flushing the
+    -- cache after it finishes reading every spool file. If the cache
+    -- hasn't been flushed in the last `t` seconds, it will be flushed
+    -- before processing the next spool file.
+    parseCacheFlushFreq = O.option $
+           long "cache-flush-freq"
+        <> short 't'
+        <> help "Period of time to wait between cache writes, in seconds"
+        <> value 42
+
     parseNameSpace = argument str (metavar "NAMESPACE")
 
     parseOrigin = argument str (metavar "ORIGIN")
@@ -90,7 +103,7 @@ main = do
         "" -> defaultCacheLoc origin
         x  -> x
 
-    a <- runMarquiseDaemon broker (Origin $ S.pack origin) namespace quit cacheFile'
+    a <- runMarquiseDaemon broker (Origin $ S.pack origin) namespace quit cacheFile' cacheFlushFreq
 
     -- wait forever
     wait a

@@ -1,3 +1,9 @@
+marquise (2.7.0-0anchor1) unstable; urgency=low
+
+  * Bump for upstream version v2.7.0
+
+ -- Anchor Systems (package signing key) <support@anchor.net.au>  Mon, 08 Sep 2014 05:19:45 +0000
+
 marquise (2.6.1-0anchor2) unstable; urgency=low
 
   * Tidy up package build process

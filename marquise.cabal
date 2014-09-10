@@ -59,7 +59,7 @@ library
                      cryptohash,
                      zeromq4-haskell,
                      time,
-                     vaultaire-common >= 2.5.0
+                     vaultaire-common >= 2.6.0
                                         
   ghc-options:       -O2
                      -threaded

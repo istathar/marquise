@@ -70,7 +70,13 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
                            , " Continuing with empty initial cache"
                            ]
                 return emptySourceCache
-            Right cache -> return cache
+            Right cache -> do
+                debugM "Server.startMarquise" $
+                    concat ["Read "
+                           , show (sizeOfSourceCache cache)
+                           , " hashes from source dict cache."
+                           ]
+                return cache
     infoM "Server.startMarquise" "Marquise daemon started"
 
     (points_loop, final_cache) <- case makeSpoolName name of
@@ -125,11 +131,22 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
         next <- nextContents sn
         (final, newFlushTime) <- case next of
             Just (bytes, seal) ->  do
-                debugM "Server.sendContents" "Got contents, starting transmission pipe."
+                debugM "Server.sendContents" $
+                    concat
+                        [ "Got contents, starting transmission pipe with "
+                        , show $ sizeOfSourceCache initial
+                        , " cached sources."
+                        ]
                 ((), final') <- withContentsConnection broker $ \c ->
                     runEffect $ for (runStateP initial (parseContentsRequests bytes >-> filterSeen))
                                     (sendSourceDictUpdate c)
                 debugM "Server.sendContents" "Contents transmission complete, cleaning up."
+                debugM "Server.sendContents" $
+                    concat
+                        [ "Saw "
+                        , show $ (sizeOfSourceCache final') - (sizeOfSourceCache initial)
+                        , " new sources."
+                        ]
                 seal
                 currTime <- getCurrentTime
                 newFlushTime' <- if currTime > flush_time

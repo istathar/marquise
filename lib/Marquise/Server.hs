@@ -54,7 +54,7 @@ data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
 
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
-runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period = 
+runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
     async $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
 
 startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> IO ()
@@ -78,7 +78,7 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
         Right sn -> do
             debugM "Server.startMarquise" "Creating spool directories"
             createDirectories sn
-            debugM "Server.startMarquise" "Starting point transmitting thread"            
+            debugM "Server.startMarquise" "Starting point transmitting thread"
             points_loop <- async (sendPoints broker origin sn shutdown)
             link points_loop
             debugM "Server.startMarquise" "Starting contents transmitting thread"
@@ -109,7 +109,7 @@ sendPoints broker origin sn shutdown = do
   where
     sendChunk chunk = do
         let size = show . S.length $ chunk
-        liftIO (debugM "Server.sendPoints" $ "Sending chunk of " ++ size ++ " bytes")
+        liftIO (debugM "Server.sendPoints" $ "Sending chunk of " ++ size ++ " bytes.")
         lift (transmitBytes broker origin chunk)
 
 sendContents :: String
@@ -125,20 +125,22 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
         next <- nextContents sn
         (final, newFlushTime) <- case next of
             Just (bytes, seal) ->  do
-                debugM "Server.sendContents" "Got contents, starting transmission pipe"
+                debugM "Server.sendContents" "Got contents, starting transmission pipe."
                 ((), final') <- withContentsConnection broker $ \c ->
                     runEffect $ for (runStateP initial (parseContentsRequests bytes >-> filterSeen))
                                     (sendSourceDictUpdate c)
-                debugM "Server.sendContents" "Contents transmission complete, cleaning up"
+                debugM "Server.sendContents" "Contents transmission complete, cleaning up."
                 seal
                 currTime <- getCurrentTime
                 newFlushTime' <- if currTime > flush_time
                     then do
                         let
-                        debugM "Server.setContents" "Performing periodic cache writeout"
-                        S.writeFile cache_file $ toWire final' 
+                        debugM "Server.setContents" "Performing periodic cache writeout."
+                        S.writeFile cache_file $ toWire final'
                         return $ addUTCTime (fromInteger cache_flush_period) currTime
-                    else return flush_time
+                    else do
+                        debugM "Server.sendContents" $ concat ["Next cache flush at ", show flush_time, "."]
+                        return flush_time
                 return (final', newFlushTime')
             Nothing -> do
                 threadDelay idleTime
@@ -156,7 +158,7 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
         cache <- get
         let currHash = hashSource sd
         if memberSourceCache currHash cache then
-            liftIO $ debugM "Server.filterSeen" $ "Seen sd with addr " ++ show addr ++ " before, ignoring"
+            liftIO $ debugM "Server.filterSeen" $ "Seen source dict with address " ++ show addr ++ " before, ignoring."
         else do
             put (insertSourceCache currHash cache)
             yield req

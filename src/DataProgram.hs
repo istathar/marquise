@@ -23,6 +23,7 @@ import Pipes
 import System.Locale
 import System.Log.Logger
 import Data.Binary.IEEE754
+import Data.Packer
 import Data.Text (Text)
 import Data.Time
 import Data.Word
@@ -31,12 +32,14 @@ import Data.Time.Clock.POSIX
 import qualified Data.ByteString.Char8 as S
 import qualified Data.Attoparsec.Text  as PT
 import qualified Data.HashMap.Strict   as HT
+import System.IO
 import Text.Printf
 
 import Marquise.Client
 import Package (package, version)
 import Vaultaire.Util
 import Vaultaire.Program
+import Vaultaire.Types
 
 --
 -- Component line option parsing
@@ -47,7 +50,7 @@ data Options = Options
   , debug     :: Bool
   , component :: Component }
 
-data Component = 
+data Component =
                  Now
                | Read { raw   :: Bool
                       , origin  :: Origin
@@ -61,6 +64,7 @@ data Component =
                | Remove  { origin :: Origin
                      , addr   :: Address
                      , dict   :: [Tag] }
+               | SourceCache { cacheFile :: FilePath }
 
 type Tag = (Text, Text)
 
@@ -90,7 +94,8 @@ optionsParser = Options <$> parseBroker
         <> parseReadComponent
         <> parseListComponent
         <> parseAddComponent
-        <> parseRemoveComponent )
+        <> parseRemoveComponent
+        <> parseSourceCacheComponent )
 
     parseTimeComponent =
         componentHelper "now" (pure Now) "Display the current time"
@@ -106,6 +111,9 @@ optionsParser = Options <$> parseBroker
 
     parseRemoveComponent =
         componentHelper "remove-source" addOptionsParser "Remove some tags from an address, does nothing if the tags do not exist"
+
+    parseSourceCacheComponent =
+        componentHelper "source-cache" sourceCacheOptionsParser "Validate the contents of a Marquise daemon source cache file"
 
     componentHelper cmd_name parser desc =
         command cmd_name (info (helper <*> parser) (progDesc desc))
@@ -163,6 +171,11 @@ addOptionsParser = Add <$> parseOrigin <*> parseAddress <*> parseTags
 
 removeOptionsParser :: Parser Component
 removeOptionsParser = Remove <$> parseOrigin <*> parseAddress <*> parseTags
+
+sourceCacheOptionsParser :: Parser Component
+sourceCacheOptionsParser = SourceCache <$> parseFilePath
+  where
+    parseFilePath = argument str $ metavar "CACHEFILE"
 
 --
 -- Actual tools
@@ -225,6 +238,20 @@ runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> IO ()
 runAddTags    = run updateSourceDict
 runRemoveTags = run removeSourceDict
 
+runSourceCache :: FilePath -> IO ()
+runSourceCache cacheFile = do
+    bits <- withFile cacheFile ReadMode S.hGetContents
+    case fromWire bits of
+        Left e -> putStrLn . concat $
+            [ "Error parsing cache file: "
+            , show e
+            ]
+        Right cache -> putStrLn . concat $
+            [ "Valid Marquise source cache. Contains "
+            , show . sizeOfSourceCache $ cache
+            , " entries."
+            ]
+
 run op broker origin addr ts = do
   let dict = case makeSourceDict $ HT.fromList ts of
                   Left e  -> error e
@@ -265,6 +292,8 @@ main = do
                 runAddTags broker origin addr tags
             Remove  origin addr tags ->
                 runRemoveTags broker origin addr tags
+            SourceCache cacheFile ->
+                runSourceCache cacheFile
         putMVar quit ()
 
     takeMVar quit

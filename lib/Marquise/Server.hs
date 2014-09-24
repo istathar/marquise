@@ -22,6 +22,7 @@ where
 
 import Data.Maybe
 import Control.Applicative
+import Control.Exception
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.Async
 import Control.Concurrent.MVar
@@ -40,7 +41,8 @@ import Data.Packer
 import Control.Monad.State.Lazy
 import Marquise.Classes
 import Marquise.Client (makeSpoolName, updateSourceDict)
-import Marquise.Types (SpoolName (..))
+import Marquise.Types (SpoolName (..), MarquiseTimeout)
+import Marquise.IO.Connection
 import Pipes
 import Pipes.Lift
 import Pipes.Attoparsec (parsed)
@@ -181,7 +183,26 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
             yield req
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
         liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)
-        lift (updateSourceDict addr source_dict origin conn)
+        lift (tryUpdateSourceDict addr source_dict origin conn)
+
+
+tryUpdateSourceDict ::
+    Address ->
+    SourceDict ->
+    Origin ->
+    SocketState ->
+    IO ()
+tryUpdateSourceDict addr sd origin conn = do
+    updateSourceDict addr sd origin conn `catch` retryUpdate
+  where
+    retryUpdate :: MarquiseTimeout -> IO ()
+    retryUpdate _ = do
+        warningM "Server.sendContents" $ concat [
+              "Timed out updating source dict for address "
+            , show addr
+            , "; retrying."
+            ]
+        tryUpdateSourceDict addr sd origin conn
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()
 parseContentsRequests bs =

@@ -15,12 +15,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
 
 module Main where
 
 import           Control.Concurrent.MVar
 import qualified Data.Attoparsec.Text as PT
 import           Data.Binary.IEEE754
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as S
 import qualified Data.HashMap.Strict as HT
 import           Data.String
@@ -29,10 +31,15 @@ import qualified Data.Text as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word
+import           Data.Aeson
+import           Data.Aeson.TH (deriveJSON, defaultOptions)
 import           Options.Applicative
 import           Pipes
+import qualified Pipes.Aeson.Unchecked as PA
 import qualified Pipes.Prelude as P
+import qualified Pipes.ByteString as PB
 import           System.IO
+import           System.Directory
 import           System.Locale
 import           System.Log.Logger
 import           Text.Printf
@@ -49,7 +56,7 @@ import           Vaultaire.Types (fromWire, sizeOfSourceCache)
 
 data Options = Options
   { broker    :: String
-  , output    :: FilePath
+  , outdir    :: FilePath
   , debug     :: Bool
   , component :: Component }
 
@@ -202,14 +209,12 @@ optionsParser = Options <$> parseBroker
 -- Actual tools
 --
 
-displayPoint :: Bool -> SimplePoint -> String
-displayPoint raw (SimplePoint address timestamp payload) =
-    if raw
-        then
-            show address ++ "," ++ show timestamp ++ "," ++ show payload
-        else
-            show address ++ "  " ++ formatTimestamp timestamp ++ " " ++ formatValue payload
-  where
+instance ToJSON SimplePoint where
+  toJSON (SimplePoint address timestamp payload) =
+    object [ "address"   .= show address
+           , "timestamp" .= formatTimestamp timestamp
+           , "value"     .= formatValue payload ]
+    where
     formatTimestamp :: TimeStamp -> String
     formatTimestamp (TimeStamp t) =
       let
@@ -236,35 +241,53 @@ displayPoint raw (SimplePoint address timestamp payload) =
         else
             printf "% 17d" v
 
-eval :: String -> Component -> IO ()
+$(deriveJSON defaultOptions ''Address)
+$(deriveJSON defaultOptions ''SourceDict)
 
-eval _ Now = do
+eval :: FilePath -> String -> Component -> IO ()
+
+eval _ _ Now = do
   now <- getCurrentTime
   let time = formatTime defaultTimeLocale "%FT%TZ" now
   putStrLn time
 
-eval broker (List origin)
-  = runQuery broker cat $ \conn ->
-    enumerateOrigin origin conn
+eval out broker (List origin) =
+  withFile (out ++ "/" ++ show origin ++ ".json") WriteMode $ \h ->
+  withContentsConnection broker $ \conn ->
+  runEffect $ enumerateOrigin origin conn
+            >-> for cat PA.encode
+            >-> PB.toHandle h
 
-eval broker (Read raw origin addr start end)
-  = runQuery broker (P.map $ displayPoint raw) $ \conn ->
-    readSimple addr start end origin conn >-> decodeSimple
+eval out broker (Read _ origin addr start end) =
+  withFile (out ++ "/" ++ show addr ++ ".json") WriteMode $ \h ->
+  withReaderConnection broker $ \conn ->
+  runEffect $   readSimple addr start end origin conn
+            >-> decodeSimple
+            >-> for cat PA.encode
+            >-> PB.toHandle h
 
-eval broker (Fetch origin start end raw)
-  = runQuery broker (P.map $ displayPoint raw) $ \conn -> enumerate
-  [ point
-  | (addr, _) <- Select $   enumerateOrigin origin conn
-  , point     <- Select $   readSimple addr start end origin conn
-                        >-> decodeSimple ]
+eval out broker (Fetch origin start end _) =
+  withContentsConnection broker $ \mcontents ->
+  withReaderConnection broker $ \mreader ->
+    runEffect $   enumerateOrigin origin mcontents
+              >-> do (addr, sd) <- await
+                     let d = out ++ "/" ++ show addr
+                     liftIO $ createDirectory d
+                     liftIO $ BL.writeFile (d ++ "/sd.json") $ encode sd
+                     for (   readSimple addr start end origin mreader
+                         >-> decodeSimple
+                         >-> for cat PA.encode >-> P.tee P.print )
+                         $ yield . (d ++ "/points.json",)
+              >-> do (file, x) <- await
+                     liftIO $ S.writeFile file x
 
-eval broker (Add origin addr dict)
+eval _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict
 
-eval broker (Remove origin addr dict)
+eval _ broker (Remove origin addr dict)
   = runDictOp removeSourceDict broker origin addr dict
 
-eval _ (SourceCache cacheFile) = do
+eval _ _ (SourceCache cacheFile) = do
   bits <- withFile cacheFile ReadMode S.hGetContents
   case fromWire bits of
       Left e -> putStrLn . concat $
@@ -276,11 +299,6 @@ eval _ (SourceCache cacheFile) = do
           , show . sizeOfSourceCache $ cache
           , " entries."
           ]
-
-runQuery broker pretty query
-  = withContentsConnection broker
-  $ \conn -> runEffect
-  $ query conn >-> pretty >-> P.print
 
 runDictOp op broker origin addr ts = do
   let dict = case makeSourceDict $ HT.fromList ts of
@@ -302,6 +320,8 @@ main = do
         then Debug
         else Quiet
 
+    createDirectoryIfMissing True outdir
+
     quit <- initializeProgram (package ++ "-" ++ version) level
 
     -- Run selected component.
@@ -311,8 +331,10 @@ main = do
     -- of the main thread so that we can block the main thread on the quit
     -- semaphore, such that a user interrupt will kill the program.
 
-    --linkThread $ do
-    eval broker component
-    --  putMVar quit ()
+    linkThread $ do
+      eval outdir broker component
+      putMVar quit ()
+
+    takeMVar quit
 
     debugM "Main.main" "End"

@@ -13,33 +13,35 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
-import Control.Concurrent.MVar
-import Data.String
-import Options.Applicative
-import Pipes
-import System.Locale
-import System.Log.Logger
-import Data.Binary.IEEE754
-import Data.Packer
-import Data.Text (Text)
-import Data.Time
-import Data.Word
-import qualified Data.Text             as T
-import Data.Time.Clock.POSIX
+import           Control.Concurrent.MVar
+import qualified Data.Attoparsec.Text as PT
+import           Data.Binary.IEEE754
 import qualified Data.ByteString.Char8 as S
-import qualified Data.Attoparsec.Text  as PT
-import qualified Data.HashMap.Strict   as HT
-import System.IO
-import Text.Printf
+import qualified Data.HashMap.Strict as HT
+import           Data.String
+import           Data.Text (Text)
+import qualified Data.Text as T
+import           Data.Time
+import           Data.Time.Clock.POSIX
+import           Data.Word
+import           Options.Applicative
+import           Pipes
+import qualified Pipes.Prelude as P
+import           System.IO
+import           System.Locale
+import           System.Log.Logger
+import           Text.Printf
 
-import Marquise.Client
-import Package (package, version)
-import Vaultaire.Util
-import Vaultaire.Program
-import Vaultaire.Types
+import           Marquise.Client
+import           Package (package, version)
+import           Vaultaire.Program
+import           Vaultaire.Util
+import           Vaultaire.Types (fromWire, sizeOfSourceCache)
 
 --
 -- Component line option parsing
@@ -47,24 +49,29 @@ import Vaultaire.Types
 
 data Options = Options
   { broker    :: String
+  , output    :: FilePath
   , debug     :: Bool
   , component :: Component }
 
-data Component =
-                 Now
-               | Read { raw   :: Bool
-                      , origin  :: Origin
-                      , address :: Address
-                      , start   :: TimeStamp
-                      , end     :: TimeStamp }
-               | List { origin :: Origin }
-               | Add { origin :: Origin
-                     , addr   :: Address
-                     , dict   :: [Tag] }
-               | Remove  { origin :: Origin
-                     , addr   :: Address
-                     , dict   :: [Tag] }
-               | SourceCache { cacheFile :: FilePath }
+data Component
+  = Now
+  | Read    { raw     :: Bool
+            , origin  :: Origin
+            , address :: Address
+            , start   :: TimeStamp
+            , end     :: TimeStamp }
+  | List    { origin  :: Origin }
+  | Add     { origin  :: Origin
+            , addr    :: Address
+            , dict    :: [Tag] }
+  | Remove  { origin  :: Origin
+            , addr    :: Address
+            , dict    :: [Tag] }
+  | Fetch   { origin  :: Origin
+            , start   :: TimeStamp
+            , end     :: TimeStamp
+            , raw     :: Bool }
+  | SourceCache { cacheFile :: FilePath }
 
 type Tag = (Text, Text)
 
@@ -73,6 +80,7 @@ helpfulParser = info (helper <*> optionsParser) fullDesc
 
 optionsParser :: Parser Options
 optionsParser = Options <$> parseBroker
+                        <*> parseOutput
                         <*> parseDebug
                         <*> parseComponents
   where
@@ -84,6 +92,11 @@ optionsParser = Options <$> parseBroker
         <> showDefault
         <> help "Vaultaire broker hostname or IP address"
 
+    parseOutput = strOption $
+           long "output_file"
+        <> value "data.out"
+        <> short 'o'
+
     parseDebug = switch $
            long "debug"
         <> short 'd'
@@ -93,6 +106,7 @@ optionsParser = Options <$> parseBroker
        (   parseTimeComponent
         <> parseReadComponent
         <> parseListComponent
+        <> parseFetchComponent
         <> parseAddComponent
         <> parseRemoveComponent
         <> parseSourceCacheComponent )
@@ -101,49 +115,70 @@ optionsParser = Options <$> parseBroker
         componentHelper "now" (pure Now) "Display the current time"
 
     parseReadComponent =
-        componentHelper "read" readOptionsParser "Read points from a given address and time range"
+        componentHelper "read" readCmd "Read points from a given address and time range"
 
     parseListComponent =
-        componentHelper "list" listOptionsParser "List addresses and metadata in origin"
+        componentHelper "list" listCmd "List addresses and metadata in origin"
+
+    parseFetchComponent =
+        componentHelper "fetch" fetchCmd "Fetch all data from origin"
 
     parseAddComponent =
-        componentHelper "add-source" addOptionsParser "Add some tags to an address"
+        componentHelper "add-source" addCmd "Add some tags to an address"
 
     parseRemoveComponent =
-        componentHelper "remove-source" addOptionsParser "Remove some tags from an address, does nothing if the tags do not exist"
+        componentHelper "remove-source" removeCmd "Remove some tags from an address, does nothing if the tags do not exist"
 
     parseSourceCacheComponent =
-        componentHelper "source-cache" sourceCacheOptionsParser "Validate the contents of a Marquise daemon source cache file"
+        componentHelper "source-cache" sourceCacheCmd "Validate the contents of a Marquise daemon source cache file"
 
     componentHelper cmd_name parser desc =
         command cmd_name (info (helper <*> parser) (progDesc desc))
 
+    parseAddress :: Parser Address
+    parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
 
-parseAddress :: Parser Address
-parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
+    parseOrigin :: Parser Origin
+    parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
+      where
+        mkOrigin = Origin . S.pack
 
-parseOrigin :: Parser Origin
-parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
-  where
-    mkOrigin = Origin . S.pack
+    parseTags :: Parser [Tag]
+    parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
+      where
+        mkTag x = case PT.parseOnly tag $ T.pack x of
+          Left _  -> error "data: invalid tag format"
+          Right y -> y
+        tag = (,) <$> PT.takeWhile (/= ':')
+                  <* ":"
+                  <*> PT.takeWhile (/= ',')
 
-parseTags :: Parser [Tag]
-parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
-  where
-    mkTag x = case PT.parseOnly tag $ T.pack x of
-      Left _  -> error "data: invalid tag format"
-      Right y -> y
-    tag = (,) <$> PT.takeWhile (/= ':')
-              <* ":"
-              <*> PT.takeWhile (/= ',')
+    readCmd :: Parser Component
+    readCmd = Read <$> parseRaw
+                   <*> parseOrigin
+                   <*> parseAddress
+                   <*> parseStart
+                   <*> parseEnd
 
-readOptionsParser :: Parser Component
-readOptionsParser = Read <$> parseRaw
-                         <*> parseOrigin
-                         <*> parseAddress
-                         <*> parseStart
-                         <*> parseEnd
-  where
+    listCmd :: Parser Component
+    listCmd = List <$> parseOrigin
+
+    fetchCmd = Fetch <$> parseOrigin
+                     <*> parseStart
+                     <*> parseEnd
+                     <*> parseRaw
+
+    addCmd :: Parser Component
+    addCmd = Add <$> parseOrigin <*> parseAddress <*> parseTags
+
+    removeCmd :: Parser Component
+    removeCmd = Remove <$> parseOrigin <*> parseAddress <*> parseTags
+
+    sourceCacheCmd :: Parser Component
+    sourceCacheCmd = SourceCache <$> parseFilePath
+      where
+        parseFilePath = argument str $ metavar "CACHEFILE"
+
     parseRaw = switch $
         long "raw"
         <> short 'r'
@@ -163,36 +198,9 @@ readOptionsParser = Read <$> parseRaw
         <> showDefault
         <> help "End time in nanoseconds since epoch"
 
-listOptionsParser :: Parser Component
-listOptionsParser = List <$> parseOrigin
-
-addOptionsParser :: Parser Component
-addOptionsParser = Add <$> parseOrigin <*> parseAddress <*> parseTags
-
-removeOptionsParser :: Parser Component
-removeOptionsParser = Remove <$> parseOrigin <*> parseAddress <*> parseTags
-
-sourceCacheOptionsParser :: Parser Component
-sourceCacheOptionsParser = SourceCache <$> parseFilePath
-  where
-    parseFilePath = argument str $ metavar "CACHEFILE"
-
 --
 -- Actual tools
 --
-
-runPrintDate :: IO ()
-runPrintDate = do
-    now <- getCurrentTime
-    let time = formatTime defaultTimeLocale "%FT%TZ" now
-    putStrLn time
-
-
-runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> IO ()
-runReadPoints broker raw origin addr start end = do
-    withReaderConnection broker $ \c ->
-        runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
-                        (lift . putStrLn . (displayPoint raw))
 
 displayPoint :: Bool -> SimplePoint -> String
 displayPoint raw (SimplePoint address timestamp payload) =
@@ -228,36 +236,59 @@ displayPoint raw (SimplePoint address timestamp payload) =
         else
             printf "% 17d" v
 
+eval :: String -> Component -> IO ()
 
-runListContents :: String -> Origin -> IO ()
-runListContents broker origin = do
-    withContentsConnection broker $ \c ->
-        runEffect $ for (enumerateOrigin origin c) (lift . print)
+eval _ Now = do
+  now <- getCurrentTime
+  let time = formatTime defaultTimeLocale "%FT%TZ" now
+  putStrLn time
 
-runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> IO ()
-runAddTags    = run updateSourceDict
-runRemoveTags = run removeSourceDict
+eval broker (List origin)
+  = runQuery broker cat $ \conn ->
+    enumerateOrigin origin conn
 
-runSourceCache :: FilePath -> IO ()
-runSourceCache cacheFile = do
-    bits <- withFile cacheFile ReadMode S.hGetContents
-    case fromWire bits of
-        Left e -> putStrLn . concat $
-            [ "Error parsing cache file: "
-            , show e
-            ]
-        Right cache -> putStrLn . concat $
-            [ "Valid Marquise source cache. Contains "
-            , show . sizeOfSourceCache $ cache
-            , " entries."
-            ]
+eval broker (Read raw origin addr start end)
+  = runQuery broker (P.map $ displayPoint raw) $ \conn ->
+    readSimple addr start end origin conn >-> decodeSimple
 
-run op broker origin addr ts = do
+eval broker (Fetch origin start end raw)
+  = runQuery broker (P.map $ displayPoint raw) $ \conn -> enumerate
+  [ point
+  | (addr, _) <- Select $   enumerateOrigin origin conn
+  , point     <- Select $   readSimple addr start end origin conn
+                        >-> decodeSimple ]
+
+eval broker (Add origin addr dict)
+  = runDictOp updateSourceDict broker origin addr dict
+
+eval broker (Remove origin addr dict)
+  = runDictOp removeSourceDict broker origin addr dict
+
+eval _ (SourceCache cacheFile) = do
+  bits <- withFile cacheFile ReadMode S.hGetContents
+  case fromWire bits of
+      Left e -> putStrLn . concat $
+          [ "Error parsing cache file: "
+          , show e
+          ]
+      Right cache -> putStrLn . concat $
+          [ "Valid Marquise source cache. Contains "
+          , show . sizeOfSourceCache $ cache
+          , " entries."
+          ]
+
+runQuery broker pretty query
+  = withContentsConnection broker
+  $ \conn -> runEffect
+  $ query conn >-> pretty >-> P.print
+
+runDictOp op broker origin addr ts = do
   let dict = case makeSourceDict $ HT.fromList ts of
                   Left e  -> error e
                   Right a -> a
   withContentsConnection broker $ \c ->
         op addr dict origin c
+
 
 --
 -- Main program entry point
@@ -280,21 +311,8 @@ main = do
     -- of the main thread so that we can block the main thread on the quit
     -- semaphore, such that a user interrupt will kill the program.
 
-    linkThread $ do
-        case component of
-            Now ->
-                runPrintDate
-            Read human origin addr start end ->
-                runReadPoints broker human origin addr start end
-            List origin ->
-                runListContents broker origin
-            Add origin addr tags ->
-                runAddTags broker origin addr tags
-            Remove  origin addr tags ->
-                runRemoveTags broker origin addr tags
-            SourceCache cacheFile ->
-                runSourceCache cacheFile
-        putMVar quit ()
+    --linkThread $ do
+    eval broker component
+    --  putMVar quit ()
 
-    takeMVar quit
     debugM "Main.main" "End"

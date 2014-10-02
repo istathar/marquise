@@ -100,6 +100,7 @@ executable data
 
   build-depends:     base >=3 && <5,
                      bytestring,
+                     async,
                      hslogger,
                      optparse-applicative >=0.9.0 && <0.10.0,
                      unix,

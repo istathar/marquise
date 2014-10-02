@@ -36,7 +36,6 @@ import           Data.Aeson.TH (deriveJSON, defaultOptions)
 import           Options.Applicative
 import           Pipes
 import qualified Pipes.Aeson.Unchecked as PA
-import qualified Pipes.Prelude as P
 import qualified Pipes.ByteString as PB
 import           System.IO
 import           System.Directory
@@ -62,8 +61,7 @@ data Options = Options
 
 data Component
   = Now
-  | Read    { raw     :: Bool
-            , origin  :: Origin
+  | Read    { origin  :: Origin
             , address :: Address
             , start   :: TimeStamp
             , end     :: TimeStamp }
@@ -76,8 +74,7 @@ data Component
             , dict    :: [Tag] }
   | Fetch   { origin  :: Origin
             , start   :: TimeStamp
-            , end     :: TimeStamp
-            , raw     :: Bool }
+            , end     :: TimeStamp }
   | SourceCache { cacheFile :: FilePath }
 
 type Tag = (Text, Text)
@@ -161,8 +158,7 @@ optionsParser = Options <$> parseBroker
                   <*> PT.takeWhile (/= ',')
 
     readCmd :: Parser Component
-    readCmd = Read <$> parseRaw
-                   <*> parseOrigin
+    readCmd = Read <$> parseOrigin
                    <*> parseAddress
                    <*> parseStart
                    <*> parseEnd
@@ -173,7 +169,6 @@ optionsParser = Options <$> parseBroker
     fetchCmd = Fetch <$> parseOrigin
                      <*> parseStart
                      <*> parseEnd
-                     <*> parseRaw
 
     addCmd :: Parser Component
     addCmd = Add <$> parseOrigin <*> parseAddress <*> parseTags
@@ -185,11 +180,6 @@ optionsParser = Options <$> parseBroker
     sourceCacheCmd = SourceCache <$> parseFilePath
       where
         parseFilePath = argument str $ metavar "CACHEFILE"
-
-    parseRaw = switch $
-        long "raw"
-        <> short 'r'
-        <> help "Output values in a raw form (human-readable otherwise)"
 
     parseStart = option $
         long "start"
@@ -258,7 +248,7 @@ eval out broker (List origin) =
             >-> for cat PA.encode
             >-> PB.toHandle h
 
-eval out broker (Read _ origin addr start end) =
+eval out broker (Read origin addr start end) =
   withFile (out ++ "/" ++ show addr ++ ".json") WriteMode $ \h ->
   withReaderConnection broker $ \conn ->
   runEffect $   readSimple addr start end origin conn
@@ -266,7 +256,7 @@ eval out broker (Read _ origin addr start end) =
             >-> for cat PA.encode
             >-> PB.toHandle h
 
-eval out broker (Fetch origin start end _) =
+eval out broker (Fetch origin start end) =
   withContentsConnection broker $ \mcontents ->
   withReaderConnection broker $ \mreader ->
     runEffect $   enumerateOrigin origin mcontents
@@ -276,7 +266,7 @@ eval out broker (Fetch origin start end _) =
                      liftIO $ BL.writeFile (d ++ "/sd.json") $ encode sd
                      for (   readSimple addr start end origin mreader
                          >-> decodeSimple
-                         >-> for cat PA.encode >-> P.tee P.print )
+                         >-> for cat PA.encode)
                          $ yield . (d ++ "/points.json",)
               >-> do (file, x) <- await
                      liftIO $ S.writeFile file x

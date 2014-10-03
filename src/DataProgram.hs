@@ -274,7 +274,7 @@ eval out broker (Fetch origin start end) =
                          $ yield . (d ++ "/points.json",))
               >-> forever (do
                      (file, x) <- await
-                     liftIO $ S.writeFile file x)
+                     liftIO $ S.appendFile file (S.concat [x,"\n"]))
 
 eval _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict

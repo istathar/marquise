@@ -20,6 +20,7 @@
 module Main where
 
 import           Control.Concurrent.MVar
+import           Control.Monad
 import qualified Data.Attoparsec.Text as PT
 import           Data.Binary.IEEE754
 import qualified Data.ByteString.Lazy as BL
@@ -37,6 +38,7 @@ import           Options.Applicative
 import           Pipes
 import qualified Pipes.Aeson.Unchecked as PA
 import qualified Pipes.ByteString as PB
+import qualified Pipes.Prelude as P
 import           System.IO
 import           System.Directory
 import           System.Locale
@@ -261,16 +263,18 @@ eval out broker (Fetch origin start end) =
   withContentsConnection broker $ \mcontents ->
   withReaderConnection broker $ \mreader ->
     runEffect $   enumerateOrigin origin mcontents
-              >-> do (addr, sd) <- await
+              >-> forever (do
+                     (addr, sd) <- await
                      let d = out ++ "/" ++ show addr
                      liftIO $ createDirectory d
                      liftIO $ BL.writeFile (d ++ "/sd.json") $ encode sd
                      for (   readSimple addr start end origin mreader
                          >-> decodeSimple
                          >-> for cat PA.encode)
-                         $ yield . (d ++ "/points.json",)
-              >-> do (file, x) <- await
-                     liftIO $ S.writeFile file x
+                         $ yield . (d ++ "/points.json",))
+              >-> forever (do
+                     (file, x) <- await
+                     liftIO $ S.writeFile file x)
 
 eval _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict

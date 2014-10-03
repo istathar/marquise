@@ -97,9 +97,10 @@ optionsParser = Options <$> parseBroker
         <> help "Vaultaire broker hostname or IP address"
 
     parseOutput = strOption $
-           long "output_file"
-        <> value "data.out"
+           long "output_dir"
+        <> value "out"
         <> short 'o'
+        <> help "Output directory"
 
     parseDebug = switch $
            long "debug"

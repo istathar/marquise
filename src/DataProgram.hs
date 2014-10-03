@@ -50,6 +50,7 @@ import           System.Log.Logger
 import           Text.Printf
 
 import           Marquise.Client
+import           Marquise.IO.Util
 import           Package (package, version)
 import           Vaultaire.Program
 import           Vaultaire.Util
@@ -275,7 +276,7 @@ eval out _ broker (List origin) =
             >-> PB.toHandle h
 
 eval out format broker (Read origin addr start end) =
-  withFile (out ++ "/" ++ show addr ++ ".json") WriteMode $ \h ->
+  withFile (out ++ "/" ++ show addr) WriteMode $ \h ->
   withReaderConnection broker $ \conn ->
   runEffect $   readSimple addr start end origin conn
             >-> decodeSimple
@@ -285,16 +286,16 @@ eval out format broker (Read origin addr start end) =
 eval out format broker (Fetch origin start end) =
   withContentsConnection broker $ \mcontents ->
   withReaderConnection broker $ \mreader ->
-    runEffect $   enumerateOrigin origin mcontents
+    runEffect $   consistentEnumerateOrigin origin mcontents
               >-> forever (do
                      (addr, sd) <- await
                      let d = out ++ "/" ++ show addr
                      liftIO $ createDirectory d
-                     liftIO $ BL.writeFile (d ++ "/sd.json") $ encode sd
+                     liftIO $ BL.writeFile (d ++ "/sd") $ encode sd
                      for (   readSimple addr start end origin mreader
                          >-> decodeSimple
                          >-> encodePoints format)
-                         $ yield . (d ++ "/points.json",))
+                         $ yield . (d ++ "/points",))
               >-> forever (do
                      (file, x) <- await
                      liftIO $ S.appendFile file x)

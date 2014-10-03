@@ -108,6 +108,8 @@ executable data
                      text,
                      aeson,
                      pipes-aeson,
+                     cassava,
+                     pipes-csv,
                      pipes-bytestring,
                      attoparsec,
                      unordered-containers,

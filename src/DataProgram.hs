@@ -16,6 +16,8 @@
 {-# LANGUAGE MonadComprehensions #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Main where
 
@@ -23,6 +25,7 @@ import           Control.Concurrent.MVar
 import           Control.Monad
 import qualified Data.Attoparsec.Text as PT
 import           Data.Binary.IEEE754
+import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as S
 import qualified Data.HashMap.Strict as HT
@@ -32,13 +35,14 @@ import qualified Data.Text as T
 import           Data.Time
 import           Data.Time.Clock.POSIX
 import           Data.Word
+import           Data.Csv (record)
 import           Data.Aeson
 import           Data.Aeson.TH (deriveJSON, defaultOptions)
 import           Options.Applicative
 import           Pipes
 import qualified Pipes.Aeson.Unchecked as PA
+import qualified Pipes.Csv as PC
 import qualified Pipes.ByteString as PB
-import qualified Pipes.Prelude as P
 import           System.IO
 import           System.Directory
 import           System.Locale
@@ -58,8 +62,11 @@ import           Vaultaire.Types (fromWire, sizeOfSourceCache)
 data Options = Options
   { broker    :: String
   , outdir    :: FilePath
+  , format    :: Format
   , debug     :: Bool
   , component :: Component }
+
+data Format = JSON | CSV deriving Read
 
 data Component
   = Now
@@ -87,6 +94,7 @@ helpfulParser = info (helper <*> optionsParser) fullDesc
 optionsParser :: Parser Options
 optionsParser = Options <$> parseBroker
                         <*> parseOutput
+                        <*> parseOutputFormat
                         <*> parseDebug
                         <*> parseComponents
   where
@@ -103,6 +111,11 @@ optionsParser = Options <$> parseBroker
         <> value "out"
         <> short 'o'
         <> help "Output directory"
+
+    parseOutputFormat = option $
+           long "output_format"
+        <> short 'f'
+        <> help "Supported: JSON or CSV"
 
     parseDebug = switch $
            long "debug"
@@ -207,14 +220,20 @@ instance ToJSON SimplePoint where
     object [ "address"   .= show address
            , "timestamp" .= formatTimestamp timestamp
            , "value"     .= formatValue payload ]
-    where
-    formatTimestamp :: TimeStamp -> String
-    formatTimestamp (TimeStamp t) =
-      let
-        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
-        iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
-      in
-        (take 29 iso8601) ++ "Z"
+
+instance PC.ToRecord SimplePoint where
+  toRecord (SimplePoint address timestamp payload) =
+    record [ S.pack $ show address
+           , S.pack $ formatTimestamp timestamp
+           , S.pack $ formatValue payload ]
+
+formatTimestamp :: TimeStamp -> String
+formatTimestamp (TimeStamp t) =
+  let
+    seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
+    iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
+  in
+    (take 29 iso8601) ++ "Z"
 
 {-
     Take a stab at differentiating between raw integers and encoded floats.
@@ -227,39 +246,43 @@ instance ToJSON SimplePoint where
     you can request raw (in this program) output or actual bytes (via reader
     daemon).
 -}
-    formatValue :: Word64 -> String
-    formatValue v = if v > (2^(51 :: Int) :: Word64)
-        then
-            printf "% 24.6f" (wordToDouble v)
-        else
-            printf "% 17d" v
+formatValue :: Word64 -> String
+formatValue v = if v > (2^(51 :: Int) :: Word64)
+    then
+        printf "% 24.6f" (wordToDouble v)
+    else
+        printf "% 17d" v
 
 $(deriveJSON defaultOptions ''Address)
 $(deriveJSON defaultOptions ''SourceDict)
 
-eval :: FilePath -> String -> Component -> IO ()
+encodePoints :: Monad m => Format -> Pipe SimplePoint ByteString m ()
+encodePoints JSON = forever $ await >>= PA.encode >> yield "\n"
+encodePoints CSV  = PC.encode
 
-eval _ _ Now = do
+eval :: FilePath -> Format -> String -> Component -> IO ()
+
+eval _ _ _ Now = do
   now <- getCurrentTime
   let time = formatTime defaultTimeLocale "%FT%TZ" now
   putStrLn time
 
-eval out broker (List origin) =
-  withFile (out ++ "/" ++ show origin ++ ".json") WriteMode $ \h ->
+eval out _ broker (List origin) =
+  withFile (out ++ "/" ++ show origin) WriteMode $ \h ->
   withContentsConnection broker $ \conn ->
   runEffect $ enumerateOrigin origin conn
             >-> for cat PA.encode
             >-> PB.toHandle h
 
-eval out broker (Read origin addr start end) =
+eval out format broker (Read origin addr start end) =
   withFile (out ++ "/" ++ show addr ++ ".json") WriteMode $ \h ->
   withReaderConnection broker $ \conn ->
   runEffect $   readSimple addr start end origin conn
             >-> decodeSimple
-            >-> for cat PA.encode
+            >-> encodePoints format
             >-> PB.toHandle h
 
-eval out broker (Fetch origin start end) =
+eval out format broker (Fetch origin start end) =
   withContentsConnection broker $ \mcontents ->
   withReaderConnection broker $ \mreader ->
     runEffect $   enumerateOrigin origin mcontents
@@ -270,19 +293,19 @@ eval out broker (Fetch origin start end) =
                      liftIO $ BL.writeFile (d ++ "/sd.json") $ encode sd
                      for (   readSimple addr start end origin mreader
                          >-> decodeSimple
-                         >-> for cat PA.encode)
+                         >-> encodePoints format)
                          $ yield . (d ++ "/points.json",))
               >-> forever (do
                      (file, x) <- await
-                     liftIO $ S.appendFile file (S.concat [x,"\n"]))
+                     liftIO $ S.appendFile file x)
 
-eval _ broker (Add origin addr dict)
+eval _ _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict
 
-eval _ broker (Remove origin addr dict)
+eval _ _ broker (Remove origin addr dict)
   = runDictOp removeSourceDict broker origin addr dict
 
-eval _ _ (SourceCache cacheFile) = do
+eval _ _ _ (SourceCache cacheFile) = do
   bits <- withFile cacheFile ReadMode S.hGetContents
   case fromWire bits of
       Left e -> putStrLn . concat $
@@ -327,7 +350,7 @@ main = do
     -- semaphore, such that a user interrupt will kill the program.
 
     linkThread $ do
-      eval outdir broker component
+      eval outdir format broker component
       putMVar quit ()
 
     takeMVar quit

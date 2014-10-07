@@ -26,7 +26,6 @@ import           Control.Monad
 import qualified Data.Attoparsec.Text as PT
 import           Data.Binary.IEEE754
 import           Data.ByteString (ByteString)
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as S
 import qualified Data.HashMap.Strict as HT
 import           Data.String
@@ -54,7 +53,7 @@ import           Marquise.IO.Util
 import           Package (package, version)
 import           Vaultaire.Program
 import           Vaultaire.Util
-import           Vaultaire.Types (fromWire, sizeOfSourceCache)
+import           Vaultaire.Types (fromWire, toWire, sizeOfSourceCache)
 
 --
 -- Component line option parsing
@@ -286,18 +285,21 @@ eval out format broker (Read origin addr start end) =
 eval out format broker (Fetch origin start end) =
   withContentsConnection broker $ \mcontents ->
   withReaderConnection broker $ \mreader ->
-    runEffect $   consistentEnumerateOrigin origin mcontents
+    runEffect $   enumerateOrigin origin mcontents
               >-> forever (do
                      (addr, sd) <- await
-                     let d = out ++ "/" ++ show addr
-                     liftIO $ createDirectory d
-                     liftIO $ BL.writeFile (d ++ "/sd") $ encode sd
+                     let s = toWire sd
+                     let d = concat [out, "/", show addr, "__", S.unpack s]
+                     liftIO $ createDirectoryIfMissing False d
+                     liftIO $ S.writeFile (d ++ "/sd") s
                      for (   readSimple addr start end origin mreader
                          >-> decodeSimple
                          >-> encodePoints format)
                          $ yield . (d ++ "/points",))
               >-> forever (do
                      (file, x) <- await
+                     -- If we need to avoid opening the output handle multiple times
+                     -- do so by keeping some state when yielding the points.
                      liftIO $ S.appendFile file x)
 
 eval _ _ broker (Add origin addr dict)

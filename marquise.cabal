@@ -118,6 +118,7 @@ executable data
                      old-locale,
                      data-binary-ieee754,
                      packer,
+                     filepath,
                      marquise
 
   ghc-options:       -O2

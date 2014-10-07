@@ -49,7 +49,6 @@ import           System.Log.Logger
 import           Text.Printf
 
 import           Marquise.Client
-import           Marquise.IO.Util
 import           Package (package, version)
 import           Vaultaire.Program
 import           Vaultaire.Util
@@ -82,6 +81,7 @@ data Component
             , addr    :: Address
             , dict    :: [Tag] }
   | Fetch   { origin  :: Origin
+            , resume  :: Bool
             , start   :: TimeStamp
             , end     :: TimeStamp }
   | SourceCache { cacheFile :: FilePath }
@@ -155,6 +155,31 @@ optionsParser = Options <$> parseBroker
     componentHelper cmd_name parser desc =
         command cmd_name (info (helper <*> parser) (progDesc desc))
 
+    readCmd :: Parser Component
+    readCmd = Read <$> parseOrigin
+                   <*> parseAddress
+                   <*> parseStart
+                   <*> parseEnd
+
+    listCmd :: Parser Component
+    listCmd = List <$> parseOrigin
+
+    fetchCmd = Fetch <$> parseOrigin
+                     <*> parseResume
+                     <*> parseStart
+                     <*> parseEnd
+
+    addCmd :: Parser Component
+    addCmd = Add <$> parseOrigin <*> parseAddress <*> parseTags
+
+    removeCmd :: Parser Component
+    removeCmd = Remove <$> parseOrigin <*> parseAddress <*> parseTags
+
+    sourceCacheCmd :: Parser Component
+    sourceCacheCmd = SourceCache <$> parseFilePath
+      where
+        parseFilePath = argument str $ metavar "CACHEFILE"
+
     parseAddress :: Parser Address
     parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
 
@@ -173,29 +198,10 @@ optionsParser = Options <$> parseBroker
                   <* ":"
                   <*> PT.takeWhile (/= ',')
 
-    readCmd :: Parser Component
-    readCmd = Read <$> parseOrigin
-                   <*> parseAddress
-                   <*> parseStart
-                   <*> parseEnd
-
-    listCmd :: Parser Component
-    listCmd = List <$> parseOrigin
-
-    fetchCmd = Fetch <$> parseOrigin
-                     <*> parseStart
-                     <*> parseEnd
-
-    addCmd :: Parser Component
-    addCmd = Add <$> parseOrigin <*> parseAddress <*> parseTags
-
-    removeCmd :: Parser Component
-    removeCmd = Remove <$> parseOrigin <*> parseAddress <*> parseTags
-
-    sourceCacheCmd :: Parser Component
-    sourceCacheCmd = SourceCache <$> parseFilePath
-      where
-        parseFilePath = argument str $ metavar "CACHEFILE"
+    parseResume = switch $
+        long "resume"
+        <> short 'r'
+        <> help "Fetch in resumption mode: ignoring all existing addresses in <output_dir>/addresses. To force re-fetching a specific address, remove it from this file. You might want to do this if you know the results for an address is incomplete."
 
     parseStart = option $
         long "start"
@@ -282,25 +288,39 @@ eval out format broker (Read origin addr start end) =
             >-> encodePoints format
             >-> PB.toHandle h
 
-eval out format broker (Fetch origin start end) =
+eval out format broker (Fetch origin resume start end) =
   withContentsConnection broker $ \mcontents ->
-  withReaderConnection broker $ \mreader ->
+  withReaderConnection broker $ \mreader -> do
+    exists  <- if resume
+               then fmap (map (read :: String -> Address) . lines)
+                  $ readFile (out ++ "/addresses")
+               else return []
     runEffect $   enumerateOrigin origin mcontents
-              >-> forever (do
-                     (addr, sd) <- await
-                     let s = toWire sd
-                     let d = concat [out, "/", show addr, "__", S.unpack s]
-                     liftIO $ createDirectoryIfMissing False d
-                     liftIO $ S.writeFile (d ++ "/sd") s
-                     for (   readSimple addr start end origin mreader
-                         >-> decodeSimple
-                         >-> encodePoints format)
-                         $ yield . (d ++ "/points",))
-              >-> forever (do
-                     (file, x) <- await
-                     -- If we need to avoid opening the output handle multiple times
-                     -- do so by keeping some state when yielding the points.
-                     liftIO $ S.appendFile file x)
+              >-> ignore exists
+              >-> fetchAddress mreader
+              >-> output
+  where fetchAddress conn = forever $ do
+          (addr, sd) <- await
+          let s = toWire sd
+          let d = concat [out, "/", show addr, "__", S.unpack s]
+          liftIO $ createDirectoryIfMissing False d
+          liftIO $ S.appendFile (d   ++ "/sd") s
+          liftIO $   appendFile (out ++ "/addresses") (show addr ++ "\n")
+          liftIO $ debugM "Main.main" ("Reading points from address " ++ show addr)
+          for (   readSimple addr start end origin conn
+              >-> decodeSimple
+              >-> encodePoints format)
+              $ yield . (d ++ "/points",)
+        output = forever $ do
+          (file, x) <- await
+          -- If we need to avoid opening the output handle multiple times
+          -- do so by keeping some state when yielding the points.
+          liftIO $ S.appendFile file x
+        ignore these = forever $ do
+          (a, s) <- await
+          if a `elem` these
+          then liftIO $ debugM "Main.main" ("Ignoring address " ++ show a)
+          else yield (a, s)
 
 eval _ _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict

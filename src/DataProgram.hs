@@ -44,6 +44,7 @@ import qualified Pipes.Csv as PC
 import qualified Pipes.ByteString as PB
 import           System.IO
 import           System.Directory
+import           System.FilePath
 import           System.Locale
 import           System.Log.Logger
 import           Text.Printf
@@ -301,10 +302,9 @@ eval out format broker (Fetch origin resume start end) =
               >-> output
   where fetchAddress conn = forever $ do
           (addr, sd) <- await
-          let s = toWire sd
-          let d = concat [out, "/", show addr, "__", S.unpack s]
+          let d = concat [out, "/", show addr, "__", escape $ S.unpack $ toWire sd]
           liftIO $ createDirectoryIfMissing False d
-          liftIO $ S.appendFile (d   ++ "/sd") s
+          liftIO $ S.appendFile (d   ++ "/sd") (toWire sd)
           liftIO $   appendFile (out ++ "/addresses") (show addr ++ "\n")
           liftIO $ debugM "Main.main" ("Reading points from address " ++ show addr)
           for (   readSimple addr start end origin conn
@@ -321,6 +321,7 @@ eval out format broker (Fetch origin resume start end) =
           if a `elem` these
           then liftIO $ debugM "Main.main" ("Ignoring address " ++ show a)
           else yield (a, s)
+        escape = map (\c -> if isPathSeparator c then '_' else c)
 
 eval _ _ broker (Add origin addr dict)
   = runDictOp updateSourceDict broker origin addr dict
@@ -361,7 +362,7 @@ main = do
         then Debug
         else Quiet
 
-    createDirectoryIfMissing True outdir
+    createDirectoryIfMissing False outdir
 
     quit <- initializeProgram (package ++ "-" ++ version) level
 

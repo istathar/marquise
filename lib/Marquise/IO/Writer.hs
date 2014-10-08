@@ -17,26 +17,30 @@ module Marquise.IO.Writer
 (
 ) where
 
-import Control.Exception
+import Control.Monad.Error
 import Data.ByteString (ByteString)
+
 import Marquise.Classes
 import Marquise.IO.Connection
 import Marquise.Types
 import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
-    transmitBytes broker origin bytes =
-        withConnection ("tcp://" ++ broker ++ ":5560") $ \c -> do
-            result <- trySend origin bytes c
-            case result of
-                OnDisk -> return ()
-                InvalidWriteOrigin -> throw InvalidOrigin
+  transmitBytes broker origin bytes =
+    withConnection' ("tcp://" ++ broker ++ ":5560") $ \c -> do
+      ack <- trySend origin bytes c
+      case ack of
+        OnDisk             -> return ()
+        InvalidWriteOrigin -> throwError $ InvalidOrigin origin
 
--- | Tries to send some data, automatically retrying on timeout
-trySend :: Origin -> ByteString -> SocketState -> IO WriteResult
+-- | Tries to send some data.
+--   Deals with @Timeout@ @MarquiseError@s by retrying indefinitely.
+--
+trySend :: Origin -> ByteString -> SocketState
+        -> Marquise IO WriteResult -- ^ The errors in here cannot have any @Timeout@s
+                                   --   it might be worth using extensible error sets to assert this, or not.
 trySend origin bytes c = do
     send (PassThrough bytes) origin c
-    recv c `catch` retryOnTimeout
-  where
-    retryOnTimeout :: MarquiseTimeout -> IO WriteResult
-    retryOnTimeout _ = trySend origin bytes c
+    retryOnTimeout $ recv c
+  where retryOnTimeout :: Marquise IO WriteResult -> Marquise IO WriteResult
+        retryOnTimeout act = act `catchError` (\Timeout -> trySend origin bytes c)

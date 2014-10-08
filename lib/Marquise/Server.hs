@@ -20,37 +20,39 @@ module Marquise.Server
 )
 where
 
-import Data.Maybe
-import Control.Applicative
-import Control.Exception
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.Async
-import Control.Concurrent.MVar
-import Control.Exception (throw, throwIO)
-import Control.Monad
-import Data.Attoparsec.ByteString.Lazy (Parser)
-import Data.Attoparsec.Combinator (eitherP)
+import           Control.Applicative
+import           Control.Concurrent (threadDelay)
+import           Control.Concurrent.Async
+import           Control.Concurrent.MVar
+import           Control.Exception
+import           Control.Exception (throw, throwIO)
+import           Control.Monad
+import           Control.Monad.Error
+import           Control.Monad.State.Lazy
+import           Data.Attoparsec.ByteString.Lazy (Parser)
+import           Data.Attoparsec.Combinator (eitherP)
 import qualified Data.Attoparsec.Lazy as Parser
-import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
+import           Data.ByteString.Builder (Builder, byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
-import Data.Time.Clock
-import System.IO
-import Data.Monoid
-import Data.Packer
-import Control.Monad.State.Lazy
-import Marquise.Classes
-import Marquise.Client (makeSpoolName, updateSourceDict)
-import Marquise.Types (SpoolName (..), MarquiseTimeout)
-import Marquise.IO.Connection
-import Pipes
-import Pipes.Lift
-import Pipes.Attoparsec (parsed)
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Packer
+import           Data.Time.Clock
+import           Pipes
+import           Pipes.Attoparsec (parsed)
 import qualified Pipes.ByteString as PB
-import Pipes.Group (FreeF (..), FreeT (..))
+import           Pipes.Group (FreeF (..), FreeT (..))
 import qualified Pipes.Group as PG
-import System.Log.Logger
-import Vaultaire.Types
+import qualified Pipes.Lift  as P
+import           System.IO
+import           System.Log.Logger
+
+import           Vaultaire.Types
+import           Marquise.Classes
+import           Marquise.Client (makeSpoolName, updateSourceDict)
+import           Marquise.Types
+import           Marquise.IO.Connection
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show
@@ -59,10 +61,10 @@ runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer 
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
     async $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
 
-startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> IO ()
+startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> Marquise IO ()
 startMarquise broker origin name shutdown cache_file cache_flush_period = do
-    infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
-    init_cache <- withFile cache_file ReadWriteMode $ \h -> do
+    catchTryIO $ infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
+    init_cache <- catchTryIO $ withFile cache_file ReadWriteMode $ \h -> do
         result <- fromWire <$> S.hGetContents h
         case result of
             Left e -> do
@@ -79,7 +81,7 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
                            , " hashes from source dict cache."
                            ]
                 return cache
-    infoM "Server.startMarquise" "Marquise daemon started"
+    catchTryIO $ infoM "Server.startMarquise" "Marquise daemon started"
 
     (points_loop, final_cache) <- case makeSpoolName name of
         Left e -> throwIO e
@@ -128,19 +130,19 @@ sendContents :: String
              -> Integer
              -> UTCTime
              -> MVar ()
-             -> IO SourceDictCache
+             -> Marquise IO SourceDictCache
 sendContents broker origin sn initial cache_file cache_flush_period flush_time shutdown = do
         next <- nextContents sn
         (final, newFlushTime) <- case next of
             Just (bytes, seal) ->  do
-                debugM "Server.sendContents" $
+                catchTryIO $ debugM "Server.sendContents" $
                     concat
                         [ "Got contents, starting transmission pipe with "
                         , show $ sizeOfSourceCache initial
                         , " cached sources."
                         ]
                 ((), final') <- withContentsConnection broker $ \c ->
-                    runEffect $ for (runStateP initial (parseContentsRequests bytes >-> filterSeen))
+                    runEffect $ for (P.runStateP initial (parseContentsRequests bytes >-> filterSeen))
                                     (sendSourceDictUpdate c)
                 debugM "Server.sendContents" "Contents transmission complete, cleaning up."
                 debugM "Server.sendContents" $
@@ -151,31 +153,7 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                         ]
                 seal
                 currTime <- getCurrentTime
-                newFlushTime' <- if currTime > flush_time
-                    then do
-                        let
-                        debugM "Server.setContents" "Performing periodic cache writeout."
-                        S.writeFile cache_file $ toWire final'
-                        return $ addUTCTime (fromInteger cache_flush_period) currTime
-                    else do
-                        debugM "Server.sendContents" $ concat ["Next cache flush at ", show flush_time, "."]
-                        return flush_time
-                return (final', newFlushTime')
-            Nothing -> do
-                threadDelay idleTime
-                return (initial, flush_time)
-
-
-        done <- isJust <$> tryReadMVar shutdown
-
-        if done
-            then return final
-            else sendContents broker origin sn final cache_file cache_flush_period newFlushTime shutdown
-  where
-    filterSeen = forever $ do
-        req@(ContentsRequest addr sd) <- await
-        cache <- get
-        let currHash = hashSource sd
+                newFlushTet currHash = hashSource sd
         if memberSourceCache currHash cache then
             liftIO $ debugM "Server.filterSeen" $ "Seen source dict with address " ++ show addr ++ " before, ignoring."
         else do
@@ -186,18 +164,20 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
         lift (tryUpdateSourceDict addr source_dict origin conn)
 
 
+-- | Updates sourcedict and handles timeouts by always retrying.
+--   which means the possible errors in this transformer cannot be @Timeout@.
 tryUpdateSourceDict ::
     Address ->
     SourceDict ->
     Origin ->
     SocketState ->
-    IO ()
+    Marquise IO ()
 tryUpdateSourceDict addr sd origin conn = do
-    updateSourceDict addr sd origin conn `catch` retryUpdate
+    updateSourceDict addr sd origin conn `catchError` (\Timeout -> retryUpdate)
   where
-    retryUpdate :: MarquiseTimeout -> IO ()
-    retryUpdate _ = do
-        warningM "Server.sendContents" $ concat [
+    retryUpdate :: Marquise IO ()
+    retryUpdate = do
+        catchTryIO $ warningM "Server.sendContents" $ concat [
               "Timed out updating source dict for address "
             , show addr
             , "; retrying."

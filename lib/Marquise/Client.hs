@@ -68,42 +68,42 @@ module Marquise.Client
     SocketState(..),
 ) where
 
-import Control.Applicative
-import Control.Exception (SomeException (..), throw)
-import Control.Monad.Reader hiding (lift)
-import Crypto.MAC.SipHash
-import Data.Bits
-import Data.ByteString (ByteString)
+import           Control.Applicative
+import           Control.Monad.Error
+import           Crypto.MAC.SipHash
+import           Data.Bits
+import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import Data.Char (isAlphaNum)
-import Data.Packer
-import Data.Word (Word64)
-import Marquise.Classes
-import Marquise.IO ()
-import Marquise.IO.Connection
-import Marquise.Types
-import Pipes
-import Vaultaire.Types
+import           Data.Char (isAlphaNum)
+import           Data.Packer
+import           Data.Word (Word64)
+import           Pipes
+
+import           Marquise.Classes
+import           Marquise.IO.Connection
+import           Marquise.Types
+import           Vaultaire.Types
+
 
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
-makeSpoolName :: String -> Either SomeException SpoolName
+makeSpoolName :: Monad m => String -> Marquise m SpoolName
 makeSpoolName s
-    | any (not . isAlphaNum) s = Left (SomeException InvalidSpoolName)
-    | otherwise = Right (SpoolName s)
+    | any (not . isAlphaNum) s = throwError $ InvalidSpoolName s
+    | otherwise                = return (SpoolName s)
 
 -- | Create a name in the spool. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
 createSpoolFiles :: MarquiseSpoolFileMonad m
                  => String
-                 -> m SpoolFiles
-createSpoolFiles s =
-    case makeSpoolName s of
-        Left e -> throw e
-        Right sn -> createDirectories sn >> randomSpoolFiles sn
+                 -> Marquise m SpoolFiles
+createSpoolFiles s = do
+  n <- makeSpoolName s
+  createDirectories n
+  randomSpoolFiles  n
 
 -- | Deterministically convert a ByteString to an Address by taking the
--- most significant 63 bytes of its SipHash-2-4[0] with a zero key. The 
+-- most significant 63 bytes of its SipHash-2-4[0] with a zero key. The
 -- LSB of the resulting 64-bit value is not part of the unique portion
 -- of the address; it is set when queueing writes, depending on the
 -- point type (simple or extended) being written.
@@ -119,7 +119,7 @@ hashIdentifier = Address . (`clearBit` 0) . unSipHash . hash iv
 requestUnique :: MarquiseContentsMonad m conn
                => Origin
                -> conn
-               -> m Address
+               -> Marquise m Address
 requestUnique origin conn =  do
     sendContentsRequest GenerateNewAddress origin conn
     response <- recvContentsResponse conn
@@ -133,7 +133,7 @@ updateSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> m ()
+                 -> Marquise m ()
 updateSourceDict addr source_dict origin conn =  do
     sendContentsRequest (UpdateSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
@@ -147,7 +147,7 @@ removeSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> m ()
+                 -> Marquise m ()
 removeSourceDict addr source_dict origin conn = do
     sendContentsRequest (RemoveSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
@@ -159,7 +159,7 @@ removeSourceDict addr source_dict origin conn = do
 enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
                 -> conn
-                -> Producer' (Address, SourceDict) m ()
+                -> Producer' (Address, SourceDict) (Marquise m) ()
 enumerateOrigin origin conn = do
     lift $ sendContentsRequest ContentsListRequest origin conn
     loop
@@ -181,7 +181,7 @@ readSimple :: MarquiseReaderMonad m conn
            -> TimeStamp
            -> Origin
            -> conn
-           -> Producer' SimpleBurst m ()
+           -> Producer' SimpleBurst (Marquise m) ()
 readSimple addr start end origin conn = do
     lift $ sendReaderRequest (SimpleReadRequest addr start end) origin conn
     loop
@@ -205,7 +205,7 @@ readExtended :: MarquiseReaderMonad m conn
              -> TimeStamp
              -> Origin
              -> conn
-             -> Producer' ExtendedBurst m ()
+             -> Producer' ExtendedBurst (Marquise m) ()
 readExtended addr start end origin conn = do
     lift $ sendReaderRequest (ExtendedReadRequest addr start end) origin conn
     loop
@@ -221,7 +221,7 @@ readExtended addr start end origin conn = do
                 error "readSimple loop: Invalid response"
 
 -- | Stream converts raw SimpleBursts into SimplePoints
-decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint m ()
+decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint (Marquise m) ()
 decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
   where
     emitFrom os chunk
@@ -271,7 +271,7 @@ queueSimple
     -> Address
     -> TimeStamp
     -> Word64
-    -> m ()
+    -> Marquise m ()
 queueSimple sfs (Address ad) (TimeStamp ts) w = appendPoints sfs bytes
   where
     bytes = runPacking 24 $ do
@@ -288,7 +288,7 @@ queueExtended
     -> Address
     -> TimeStamp
     -> ByteString
-    -> m ()
+    -> Marquise m ()
 queueExtended sfs (Address ad) (TimeStamp ts) bs = appendPoints sfs bytes
   where
     len = BS.length bs
@@ -304,7 +304,7 @@ queueSourceDictUpdate
     => SpoolFiles
     -> Address
     -> SourceDict
-    -> m ()
+    -> Marquise m ()
 queueSourceDictUpdate sfs (Address addr) source_dict = appendContents sfs bytes
   where
     source_dict_bytes = toWire source_dict
@@ -318,6 +318,5 @@ queueSourceDictUpdate sfs (Address addr) source_dict = appendContents sfs bytes
 flush
     :: MarquiseSpoolFileMonad m
     => SpoolFiles
-    -> m ()
+    -> Marquise m ()
 flush = close
-

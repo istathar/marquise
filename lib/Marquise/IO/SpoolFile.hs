@@ -34,24 +34,24 @@ import System.Posix.Temp
 import System.Posix.Types (Fd)
 
 instance MarquiseSpoolFileMonad IO where
-    randomSpoolFiles sn =
+    randomSpoolFiles sn = catchTryIO $
         SpoolFiles <$> newRandomSpoolFile (newPointsDir sn)
                    <*> newRandomSpoolFile (newContentsDir sn)
 
-    createDirectories sn =
+    createDirectories sn = catchTryIO $
         mapM_ (createDirectoryIfMissing True . ($sn))
               [ newPointsDir
               , newContentsDir
               , curPointsDir
               , curContentsDir]
 
-    appendPoints = doAppend . pointsSpoolFile
-    appendContents = doAppend . contentsSpoolFile
+    appendPoints   spools bs = catchTryIO $ doAppend (pointsSpoolFile spools) bs
+    appendContents spools bs = catchTryIO $ doAppend (contentsSpoolFile spools) bs
 
-    nextPoints sn = nextSpoolContents (newPointsDir sn) (curPointsDir sn)
-    nextContents sn = nextSpoolContents (newContentsDir sn) (curContentsDir sn)
+    nextPoints sn   = catchTryIO $ nextSpoolContents (newPointsDir sn) (curPointsDir sn)
+    nextContents sn = catchTryIO $ nextSpoolContents (newContentsDir sn) (curContentsDir sn)
 
-    close _ = c_sync
+    close _ = catchTryIO c_sync
 
 newRandomSpoolFile :: FilePath -> IO FilePath
 newRandomSpoolFile path = do

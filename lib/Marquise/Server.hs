@@ -11,6 +11,9 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+
 -- | Marquise server library, for transmission of queued data to the vault.
 module Marquise.Server
 (
@@ -25,8 +28,7 @@ import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.Async
 import qualified Control.Concurrent.Async.Lifted as AL
 import           Control.Concurrent.MVar
-import           Control.Exception
-import           Control.Exception (throw, throwIO)
+import           Control.Exception (throw)
 import           Control.Monad
 import           Control.Monad.Error
 import           Control.Monad.State.Lazy
@@ -53,6 +55,7 @@ import           Vaultaire.Types
 import           Marquise.Classes
 import           Marquise.Client (makeSpoolName, updateSourceDict)
 import           Marquise.Types
+import           Marquise.IO ()
 import           Marquise.IO.Connection
 
 data ContentsRequest = ContentsRequest Address SourceDict
@@ -118,8 +121,8 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
 
 sendPoints :: String -> Origin -> SpoolName -> MVar () -> Marquise IO ()
 sendPoints broker origin sn shutdown = do
-    next <- nextPoints sn
-    case next of
+    nexts <- nextPoints sn
+    case nexts of
         Just (bytes, seal) -> do
             catchTryIO $ debugM "Server.sendPoints" "Got points, starting transmission pipe"
             runEffect $ for (breakInToChunks bytes) sendChunk
@@ -146,8 +149,8 @@ sendContents :: String
              -> MVar ()
              -> Marquise IO SourceDictCache
 sendContents broker origin sn initial cache_file cache_flush_period flush_time shutdown = do
-        next <- nextContents sn
-        (final, newFlushTime) <- case next of
+        nexts <- nextContents sn
+        (final, newFlushTime) <- case nexts of
             Just (bytes, seal) ->  do
                 catchTryIO $ debugM "Server.sendContents" $
                     concat

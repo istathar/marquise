@@ -24,8 +24,7 @@ library
   exposed-modules:   Marquise.Client,
                      Marquise.Classes,
                      Marquise.Types,
-                     Marquise.Server,
-                     Marquise.IO.Util
+                     Marquise.Server
 
   other-modules:     Marquise.IO,
                      Marquise.IO.FFI,
@@ -39,8 +38,10 @@ library
                      mtl,
                      either,
                      errors,
+                     transformers-base,
                      monad-control,
                      mmorph,
+                     lifted-async,
                      containers,
                      unordered-containers,
                      bytestring >= 0.10.2,
@@ -64,7 +65,7 @@ library
                      zeromq4-haskell,
                      time,
                      vaultaire-common >= 2.6.0
-                                        
+
   ghc-options:       -O2
                      -threaded
                      -Wall

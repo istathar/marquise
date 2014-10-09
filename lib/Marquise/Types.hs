@@ -10,6 +10,11 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 {-# OPTIONS_HADDOCK hide, prune #-}
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
@@ -25,6 +30,7 @@ module Marquise.Types
 ) where
 
 import           Control.Applicative
+import           Control.Monad.Base
 import           Control.Monad.Error
 import           Control.Monad.Morph
 import           Control.Monad.Trans.Control
@@ -87,10 +93,21 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
   deriving ( Functor, Applicative, Monad
            , MonadTrans, MonadError MarquiseError, MonadIO
-           , MFunctor, MMonad )
+           , MFunctor, MMonad)
 
 unwrapMarquise :: Marquise m a -> m (Either MarquiseError a)
 unwrapMarquise = runErrorT . marquise
+
+deriving instance MonadBase IO (Marquise IO)
+
+-- These don't work, figure out why.
+-- deriving instance MonadBase b m => MonadBase b (Marquise m)
+-- instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
+
+instance MonadBaseControl IO (Marquise IO) where
+  newtype StM (Marquise IO) a = StMMarquise { unStMMarquise :: ComposeSt Marquise IO a}
+  liftBaseWith = defaultLiftBaseWith StMMarquise
+  restoreM     = defaultRestoreM   unStMMarquise
 
 instance MonadTransControl Marquise where
   newtype StT Marquise a = StMarquise { unStError :: Either MarquiseError a }

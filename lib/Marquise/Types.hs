@@ -21,7 +21,7 @@ module Marquise.Types
     TimeStamp(..),
     SimplePoint(..),
     ExtendedPoint(..),
-    Marquise(..), MarquiseError(..), unwrap, catchSyncIO, catchTryIO
+    Marquise(..), unwrapMarquise, MarquiseError(..), unwrap, catchSyncIO, catchTryIO
 ) where
 
 import           Control.Applicative
@@ -86,8 +86,11 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 --
 newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
   deriving ( Functor, Applicative, Monad
-           , MonadTrans, MonadError MarquiseError
+           , MonadTrans, MonadError MarquiseError, MonadIO
            , MFunctor, MMonad )
+
+unwrapMarquise :: Marquise m a -> m (Either MarquiseError a)
+unwrapMarquise = runErrorT . marquise
 
 instance MonadTransControl Marquise where
   newtype StT Marquise a = StMarquise { unStError :: Either MarquiseError a }
@@ -124,5 +127,6 @@ instance Error MarquiseError where
 catchSyncIO :: (SomeException -> MarquiseError) -> IO a -> Marquise IO a
 catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
 
+-- | Catch only @IOException@s.
 catchTryIO  :: IO a -> Marquise IO a
 catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO

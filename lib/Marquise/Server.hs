@@ -23,6 +23,7 @@ where
 import           Control.Applicative
 import           Control.Concurrent (threadDelay)
 import           Control.Concurrent.Async
+import qualified Control.Concurrent.Async.Lifted as AL
 import           Control.Concurrent.MVar
 import           Control.Exception
 import           Control.Exception (throw, throwIO)
@@ -59,7 +60,19 @@ data ContentsRequest = ContentsRequest Address SourceDict
 
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
-    async $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
+  async $ handleErrors
+        $ unwrapMarquise
+        $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
+  where handleErrors :: IO (Either MarquiseError ()) -> IO ()
+        handleErrors act = act >>= either catchThemAll return
+        catchThemAll e = case e of
+          -- We can define a "timeout policy" as a config option, i.e. whether to restart
+          -- the marquise daemon automatically.
+          Timeout            -> error $ show e
+          -- likewise automatic handling of some errors, such as zmq errors can be defined as
+          -- config options
+          _                  -> error $ show e
+
 
 startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> Marquise IO ()
 startMarquise broker origin name shutdown cache_file cache_flush_period = do
@@ -83,38 +96,39 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
                 return cache
     catchTryIO $ infoM "Server.startMarquise" "Marquise daemon started"
 
-    (points_loop, final_cache) <- case makeSpoolName name of
-        Left e -> throwIO e
-        Right sn -> do
-            debugM "Server.startMarquise" "Creating spool directories"
-            createDirectories sn
-            debugM "Server.startMarquise" "Starting point transmitting thread"
-            points_loop <- async (sendPoints broker origin sn shutdown)
-            link points_loop
-            debugM "Server.startMarquise" "Starting contents transmitting thread"
-            currTime <- getCurrentTime
-            final_cache <- sendContents broker origin sn init_cache cache_file cache_flush_period currTime shutdown
-            return (points_loop, final_cache)
+    (points_loop, final_cache) <- do
+        sn <- makeSpoolName name
+        catchTryIO $ debugM "Server.startMarquise" "Creating spool directories"
+        createDirectories sn
+        catchTryIO $ debugM "Server.startMarquise" "Starting point transmitting thread"
+        points_loop <- AL.async (sendPoints broker origin sn shutdown)
+        currTime <- catchTryIO $ do
+          link points_loop
+          debugM "Server.startMarquise" "Starting contents transmitting thread"
+          getCurrentTime
+        final_cache <- sendContents broker origin sn init_cache cache_file cache_flush_period currTime shutdown
+        return (points_loop, final_cache)
 
-    debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
-    S.writeFile cache_file $ toWire final_cache
+    catchTryIO $ do
+      debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
+      S.writeFile cache_file $ toWire final_cache
 
-    debugM "Server.startMarquise" "Waiting for points loop thread"
-    wait points_loop
+    catchTryIO $ debugM "Server.startMarquise" "Waiting for points loop thread"
+    AL.wait points_loop
 
-sendPoints :: String -> Origin -> SpoolName -> MVar () -> IO ()
+sendPoints :: String -> Origin -> SpoolName -> MVar () -> Marquise IO ()
 sendPoints broker origin sn shutdown = do
     next <- nextPoints sn
     case next of
         Just (bytes, seal) -> do
-            debugM "Server.sendPoints" "Got points, starting transmission pipe"
+            catchTryIO $ debugM "Server.sendPoints" "Got points, starting transmission pipe"
             runEffect $ for (breakInToChunks bytes) sendChunk
-            debugM "Server.sendPoints" "Transmission complete, cleaning up"
-            seal
-        Nothing ->
-            threadDelay idleTime
+            catchTryIO $ do
+              debugM "Server.sendPoints" "Transmission complete, cleaning up"
+              seal
+        Nothing -> catchTryIO $ threadDelay idleTime
 
-    done <- isJust <$> tryReadMVar shutdown
+    done <- catchTryIO $ isJust <$> tryReadMVar shutdown
     unless done (sendPoints broker origin sn shutdown)
   where
     sendChunk chunk = do
@@ -141,19 +155,46 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                         , show $ sizeOfSourceCache initial
                         , " cached sources."
                         ]
-                ((), final') <- withContentsConnection broker $ \c ->
+
+                ((), final') <- withContentsConnectionT broker $ \c ->
                     runEffect $ for (P.runStateP initial (parseContentsRequests bytes >-> filterSeen))
                                     (sendSourceDictUpdate c)
-                debugM "Server.sendContents" "Contents transmission complete, cleaning up."
-                debugM "Server.sendContents" $
-                    concat
-                        [ "Saw "
-                        , show $ (sizeOfSourceCache final') - (sizeOfSourceCache initial)
-                        , " new sources."
-                        ]
-                seal
-                currTime <- getCurrentTime
-                newFlushTet currHash = hashSource sd
+
+                newFlushTime' <- catchTryIO $ do
+                  debugM "Server.sendContents" "Contents transmission complete, cleaning up."
+                  debugM "Server.sendContents" $
+                      concat
+                          [ "Saw "
+                          , show $ (sizeOfSourceCache final') - (sizeOfSourceCache initial)
+                          , " new sources."
+                          ]
+                  seal
+                  currTime <- getCurrentTime
+                  if currTime > flush_time
+                      then do
+                          debugM "Server.setContents" "Performing periodic cache writeout."
+                          S.writeFile cache_file $ toWire final'
+                          return $ addUTCTime (fromInteger cache_flush_period) currTime
+                      else do
+                          debugM "Server.sendContents" $ concat ["Next cache flush at ", show flush_time, "."]
+                          return flush_time
+                return (final', newFlushTime')
+
+            Nothing -> catchTryIO $ do
+                threadDelay idleTime
+                return (initial, flush_time)
+
+
+        done <- catchTryIO $ isJust <$> tryReadMVar shutdown
+        if done
+        then return final
+        else sendContents broker origin sn final cache_file cache_flush_period newFlushTime shutdown
+
+  where
+    filterSeen = forever $ do
+        req@(ContentsRequest addr sd) <- await
+        cache <- get
+        let currHash = hashSource sd
         if memberSourceCache currHash cache then
             liftIO $ debugM "Server.filterSeen" $ "Seen source dict with address " ++ show addr ++ " before, ignoring."
         else do

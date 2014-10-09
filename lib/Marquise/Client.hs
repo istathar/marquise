@@ -25,6 +25,8 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.Client
 (

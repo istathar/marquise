@@ -12,6 +12,8 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.IO.Writer
 (
@@ -27,7 +29,7 @@ import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
   transmitBytes broker origin bytes =
-    withConnection' ("tcp://" ++ broker ++ ":5560") $ \c -> do
+    withConnectionT ("tcp://" ++ broker ++ ":5560") $ \c -> do
       ack <- trySend origin bytes c
       case ack of
         OnDisk             -> return ()

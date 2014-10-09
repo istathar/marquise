@@ -9,6 +9,8 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.IO.Connection
 (
@@ -20,7 +22,8 @@ module Marquise.IO.Connection
 ) where
 
 import           Control.Monad.Error
-import qualified Control.Exception.Lifted as L
+import           Control.Monad.Morph
+import           Control.Monad.Trans.Control
 import           Data.List.NonEmpty (fromList)
 import           System.ZMQ4 (Socket, Poll(..), Event(..), Dealer(..))
 import qualified System.ZMQ4 as Z
@@ -40,17 +43,8 @@ withConnection broker f = catchSyncIO ZMQException $
         Z.connect s broker
         f (SocketState s broker)
 
--- | Like @withConnection@, but for a continuation that already wraps @MarquiseError@s.
---   This can be thought of as adding connection-related errors to an error (effect) set.
 withConnectionT :: String -> (SocketState -> Marquise IO a) -> Marquise IO a
-withConnectionT broker f
-  = L.bracket (catchSyncIO ZMQException $ do
-                 c <- Z.context
-                 s <- Z.socket c Dealer
-                 Z.connect s broker
-                 return (c, s))
-              (\(ctx, sock) -> catchSyncIO ZMQException $ Z.close sock >> Z.term ctx)
-              (\(_,   sock) -> f (SocketState sock broker))
+withConnectionT broker act = squash $ restoreT $ withConnection broker (unwrap . act)
 
 send :: WireFormat request
      => request

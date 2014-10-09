@@ -82,8 +82,11 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 --   that exposes the monad state constructor to be unwrapped and restored manually.
 --   See Marquise.Classes
 --
+--   *concern* Test that this is sound, i.e. errors that are unwrapped are restored.
+--
 newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
-  deriving ( Functor, Applicative, Monad, MonadTrans
+  deriving ( Functor, Applicative, Monad
+           , MonadTrans, MonadError MarquiseError
            , MFunctor, MMonad )
 
 instance MonadTransControl Marquise where

@@ -18,9 +18,9 @@ module Marquise.Classes
     MarquiseContentsMonad(..),
 ) where
 
-import Control.Monad.Error
+import Control.Monad.Morph
+import Control.Monad.Trans.Control
 import Data.ByteString (ByteString)
-import qualified Control.Exception.Lifted as L
 import qualified Data.ByteString.Lazy     as LB
 
 import Marquise.Types
@@ -67,9 +67,11 @@ class Monad m => MarquiseWriterMonad m where
 -- | Monad encapsulating reader operations. Note there is an instance for
 -- IO SocketState in IO/Contents.hs
 class Monad m => MarquiseContentsMonad m connection | m -> connection where
-    withContentsConnection :: String -> (connection -> m a) -> Marquise m a
     sendContentsRequest    :: ContentsOperation -> Origin -> connection -> Marquise m ()
     recvContentsResponse   :: connection -> Marquise m ContentsResponse
+    withContentsConnection :: String -> (connection -> m a) -> Marquise m a
+    withContentsConnectionT :: (Functor m, Monad m) => String -> (connection -> Marquise m a) -> Marquise m a
+    withContentsConnectionT broker act = squash $ restoreT $ withContentsConnection broker (unwrap . act)
 
 -- | Monad encapsulating reader operations. Note there is an instance for
 -- IO SocketState in IO/Reader.hs

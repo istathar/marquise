@@ -9,7 +9,10 @@
 
 {-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_HADDOCK hide, prune #-}
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.Types
 (
@@ -18,10 +21,13 @@ module Marquise.Types
     TimeStamp(..),
     SimplePoint(..),
     ExtendedPoint(..),
-    Marquise, MarquiseError(..), catchSyncIO, catchTryIO
+    Marquise(..), MarquiseError(..), unwrap, catchSyncIO, catchTryIO
 ) where
 
+import           Control.Applicative
 import           Control.Monad.Error
+import           Control.Monad.Morph
+import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Either
 import           Control.Error.Util
 import           Control.Exception (IOException, SomeException)
@@ -71,7 +77,22 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 
 -- | Handles everything that can fail so we don't ever just crash from an exception
 --   but always provide opportunities to recover.
-type Marquise = ErrorT MarquiseError
+--
+--   *NOTE* This is a newtype because we want to define our own @MonadTransControl@ instance
+--   that exposes the monad state constructor to be unwrapped and restored manually.
+--   See Marquise.Classes
+--
+newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
+  deriving ( Functor, Applicative, Monad, MonadTrans
+           , MFunctor, MMonad )
+
+instance MonadTransControl Marquise where
+  newtype StT Marquise a = StMarquise { unStError :: Either MarquiseError a }
+  liftWith f = Marquise $ ErrorT $ liftM return $ f $ liftM StMarquise . runErrorT . marquise
+  restoreT   = Marquise . ErrorT . liftM unStError
+
+unwrap :: Functor m => Marquise m a -> m (StT Marquise a)
+unwrap =  fmap StMarquise . runErrorT . marquise
 
 data MarquiseError
  = InvalidSpoolName   String
@@ -98,7 +119,7 @@ instance Error MarquiseError where
 
 -- | Catch all synchorous IO exceptions and wrap them in @ErrorT@
 catchSyncIO :: (SomeException -> MarquiseError) -> IO a -> Marquise IO a
-catchSyncIO f = ErrorT . fmap (mapLeft f) . runEitherT . syncIO
+catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
 
 catchTryIO  :: IO a -> Marquise IO a
-catchTryIO = ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO
+catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO

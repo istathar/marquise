@@ -14,6 +14,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
+-- Our Base/BaseControl instances are simple enough to assert that
+-- that they are decidable, monad-control needs this too.
+{-# LANGUAGE UndecidableInstances #-}
 
 {-# OPTIONS_HADDOCK hide, prune #-}
 -- Hide warnings for the deprecated ErrorT transformer:
@@ -26,7 +29,8 @@ module Marquise.Types
     TimeStamp(..),
     SimplePoint(..),
     ExtendedPoint(..),
-    Marquise(..), unwrapMarquise, MarquiseError(..), unwrap, catchSyncIO, catchTryIO
+    Marquise(..), unwrapMarquise, withMarquiseHandler,
+    MarquiseError(..), unwrap, catchSyncIO, catchTryIO
 ) where
 
 import           Control.Applicative
@@ -98,14 +102,13 @@ newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
 unwrapMarquise :: Marquise m a -> m (Either MarquiseError a)
 unwrapMarquise = runErrorT . marquise
 
-deriving instance MonadBase IO (Marquise IO)
+withMarquiseHandler :: Monad m => (MarquiseError -> a) -> Marquise m a -> m a
+withMarquiseHandler errorHandler act = unwrapMarquise act >>= either (return . errorHandler) return
 
--- These don't work, figure out why.
--- deriving instance MonadBase b m => MonadBase b (Marquise m)
--- instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
+deriving instance MonadBase b m => MonadBase b (Marquise m)
 
-instance MonadBaseControl IO (Marquise IO) where
-  newtype StM (Marquise IO) a = StMMarquise { unStMMarquise :: ComposeSt Marquise IO a}
+instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
+  newtype StM (Marquise m) a = StMMarquise { unStMMarquise :: ComposeSt Marquise m a}
   liftBaseWith = defaultLiftBaseWith StMMarquise
   restoreM     = defaultRestoreM   unStMMarquise
 

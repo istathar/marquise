@@ -38,6 +38,7 @@ module Marquise.Client
 
     -- | * Contents daemon requests
     withContentsConnection,
+    withContentsConnectionT,
     requestUnique,
     makeSourceDict,
     updateSourceDict,
@@ -53,6 +54,7 @@ module Marquise.Client
 
     -- | Reading from Vaultaire
     withReaderConnection,
+    withReaderConnectionT,
     readExtended,
     readSimple,
     decodeExtended,
@@ -68,6 +70,9 @@ module Marquise.Client
     SimpleBurst(..),
     SimplePoint(..),
     SocketState(..),
+
+    -- * Instances
+    module Marquise.IO
 ) where
 
 import           Control.Applicative
@@ -82,6 +87,7 @@ import           Data.Word (Word64)
 import           Pipes
 
 import           Marquise.Classes
+import           Marquise.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types

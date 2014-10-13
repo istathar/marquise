@@ -14,23 +14,29 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
+
 -- Our Base/BaseControl instances are simple enough to assert that
 -- that they are decidable, monad-control needs this too.
 {-# LANGUAGE UndecidableInstances #-}
 
 {-# OPTIONS_HADDOCK hide, prune #-}
+
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.Types
-(
-    SpoolName(..),
-    SpoolFiles(..),
-    TimeStamp(..),
-    SimplePoint(..),
-    ExtendedPoint(..),
-    Marquise(..), unwrapMarquise, withMarquiseHandler,
-    MarquiseError(..), unwrap, catchSyncIO, catchTryIO
+    ( -- * Data
+      SpoolName(..)
+    , SpoolFiles(..)
+    , TimeStamp(..)
+    , SimplePoint(..), ExtendedPoint(..)
+
+      -- * Results
+    , Result, wrapResult, unwrapResult
+
+      -- * Errors
+    , Marquise(..), unwrapMarquise, withMarquiseHandler
+    , MarquiseError(..), unwrap, catchSyncIO, catchTryIO, catchMarquiseP
 ) where
 
 import           Control.Applicative
@@ -45,8 +51,11 @@ import           Data.Either.Combinators
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B8
 import           Data.Word (Word64)
+import           Pipes
+import qualified Pipes.Lift as P
 
 import           Vaultaire.Types
+
 
 -- | A NameSpace implies a certain amount of Marquise server-side state. This
 -- state being the Marquise server's authentication and origin configuration.
@@ -83,6 +92,22 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
                                    , extendedPayload :: ByteString }
   deriving Show
 
+
+-- Result ----------------------------------------------------------------------
+
+-- | A type-level fixed point.
+newtype Fix f         = Mu      { unroll :: (f (Fix f)) }
+
+-- | The query output type with the return type left untied.
+data    ResultF a m r = ResultF { resume :: Producer a m r }
+
+-- | The query output type with itself as the return type.
+newtype Result a m    = Result  { resultf :: Fix (ResultF a m) }
+
+wrapResult   = Result . Mu     . ResultF
+unwrapResult = resume . unroll . resultf
+
+
 -- Errors ----------------------------------------------------------------------
 
 -- | Handles everything that can fail so we don't ever just crash from an exception
@@ -92,18 +117,10 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 --   that exposes the monad state constructor to be unwrapped and restored manually.
 --   See Marquise.Classes
 --
---   *concern* Test that this is sound, i.e. errors that are unwrapped are restored.
---
 newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseError m a }
   deriving ( Functor, Applicative, Monad
            , MonadTrans, MonadError MarquiseError, MonadIO
            , MFunctor, MMonad)
-
-unwrapMarquise :: Marquise m a -> m (Either MarquiseError a)
-unwrapMarquise = runErrorT . marquise
-
-withMarquiseHandler :: Monad m => (MarquiseError -> a) -> Marquise m a -> m a
-withMarquiseHandler errorHandler act = unwrapMarquise act >>= either (return . errorHandler) return
 
 deriving instance MonadBase b m => MonadBase b (Marquise m)
 
@@ -119,6 +136,12 @@ instance MonadTransControl Marquise where
 
 unwrap :: Functor m => Marquise m a -> m (StT Marquise a)
 unwrap =  fmap StMarquise . runErrorT . marquise
+
+unwrapMarquise :: Marquise m a -> m (Either MarquiseError a)
+unwrapMarquise = runErrorT . marquise
+
+withMarquiseHandler :: Monad m => (MarquiseError -> a) -> Marquise m a -> m a
+withMarquiseHandler errorHandler act = unwrapMarquise act >>= either (return . errorHandler) return
 
 data MarquiseError
  = InvalidSpoolName   String
@@ -143,10 +166,19 @@ instance Show MarquiseError where
 instance Error MarquiseError where
   noMsg = Other "unknown"
 
+-- | Catch a Marquise error inside a pipe
+catchMarquiseP
+  :: (Monad m)
+  => Proxy a' a b' b (Marquise m) r
+  -> (MarquiseError -> Proxy a' a b' b (Marquise m) r)
+  -> Proxy a' a b' b (Marquise m) r
+catchMarquiseP act handler
+  = hoist Marquise $ P.catchError (hoist marquise act) (hoist marquise . handler)
+
 -- | Catch all synchorous IO exceptions and wrap them in @ErrorT@
 catchSyncIO :: (SomeException -> MarquiseError) -> IO a -> Marquise IO a
 catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
 
--- | Catch only @IOException@s.
+-- | Catch only @IOException@s
 catchTryIO  :: IO a -> Marquise IO a
 catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO

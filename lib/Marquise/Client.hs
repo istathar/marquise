@@ -72,26 +72,33 @@ module Marquise.Client
     SocketState(..),
 
     -- * Instances
-    module Marquise.IO
+    -- module Marquise.IO
 ) where
 
 import           Control.Applicative
 import           Control.Monad.Error
+import           Control.Monad.Trans.State
 import           Crypto.MAC.SipHash
 import           Data.Bits
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
+import           Data.HashSet (HashSet)
+import qualified Data.HashSet    as HS
 import           Data.Char (isAlphaNum)
 import           Data.Packer
 import           Data.Word (Word64)
 import           Pipes
+import qualified Pipes.Prelude as P
+import qualified Pipes.Lift    as P
 
 import           Marquise.Classes
-import           Marquise.IO ()
+--import           Marquise.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types
 
+
+type Addr = (Address, SourceDict)
 
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.

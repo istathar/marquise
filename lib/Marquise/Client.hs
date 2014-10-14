@@ -25,6 +25,9 @@
 
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveFunctor #-}
+
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
@@ -171,10 +174,10 @@ removeSourceDict addr source_dict origin conn = do
         _ -> error "requestSourceDictRemoval: Invalid response"
 
 -- | Stream read every Address associated with the given Origin
-enumerateOrigin :: MarquiseContentsMonad m conn
+enumerateOrigin :: forall m conn . MarquiseContentsMonad m conn
                 => Origin
                 -> conn
-                -> Producer' (Address, SourceDict) (Marquise m) ()
+                -> Producer Addr (Marquise m) ()
 enumerateOrigin origin conn = do
     lift $ sendContentsRequest ContentsListRequest origin conn
     loop
@@ -335,3 +338,12 @@ flush
     => SpoolFiles
     -> Marquise m ()
 flush = close
+
+-- Persistent interface (no timeouts) ------------------------------------------
+
+--mustEnumerateOrigin :: MarquiseContentsMonad m conn
+--                    => Origin -> conn
+--                    -> Producer' (Address, SourceDict) (Marquise m) ()
+--mustEnumerateOrigin origin conn
+--  = catchMarquiseP (enumerateOrigin origin conn)
+--                   (\Timeout -> mustEnumerateOrigin origin conn)

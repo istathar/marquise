@@ -18,8 +18,6 @@ module Marquise.Classes
     MarquiseContentsMonad(..),
 ) where
 
-import Control.Monad
-import Control.Monad.Morph
 import Control.Monad.Trans.Control
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy     as LB
@@ -72,13 +70,13 @@ class Monad m => MarquiseContentsMonad m connection | m -> connection where
     recvContentsResponse   :: connection -> Marquise m ContentsResponse
 
     -- | Establish connection and run an action.
-    withContentsConnection :: String -> (connection -> m a) -> Marquise m a
+    withContentsConnection :: String -> (connection -> m a) -> m a
 
     -- | Like @withContentsConnection@ but captures errors already wrapped in the continuation as well.
     --   To control how to recover from layered errors, provide your own implementation.
     withContentsConnectionT :: Functor m => String -> (connection -> Marquise m a) -> Marquise m a
     withContentsConnectionT broker act
-      = squash $ restoreT $ withContentsConnection broker (unwrap . act)
+      = restoreT $ withContentsConnection broker (unwrap . act)
 
 -- | Monad encapsulating reader operations. Note there is an instance for
 -- IO SocketState in IO/Reader.hs
@@ -87,10 +85,10 @@ class Monad m => MarquiseReaderMonad m connection | m -> connection where
     recvReaderResponse   :: connection -> Marquise m ReadStream
 
     -- | Establish connection and run an action.
-    withReaderConnection :: String -> (connection -> m a) -> Marquise m a
+    withReaderConnection :: String -> (connection -> m a) -> m a
 
     -- | Like @withReaderConnection@ but captures errors already wrapped in the continuation as well.
     --   To control how to recover from layered errors, provide your own implementation.
     withReaderConnectionT :: Functor m => String -> (connection -> Marquise m a) -> Marquise m a
     withReaderConnectionT broker act
-      = squash $ restoreT $ withReaderConnection broker (unwrap . act)
+      = restoreT $ withReaderConnection broker (unwrap . act)

@@ -288,13 +288,13 @@ main = do
                 Right <$> runPrintDate
             -- we always give up in case of failures for now, until resilient versions are added
             Read human origin addr start end ->
-                unwrapMarquise $ runReadPoints broker human origin addr start end
+                unMarquise' $ runReadPoints broker human origin addr start end
             List origin ->
-                unwrapMarquise $ runListContents broker origin
+                unMarquise' $ runListContents broker origin
             Add origin addr tags ->
-                unwrapMarquise $ runAddTags broker origin addr tags
+                unMarquise' $ runAddTags broker origin addr tags
             Remove  origin addr tags ->
-                unwrapMarquise $ runRemoveTags broker origin addr tags
+                unMarquise' $ runRemoveTags broker origin addr tags
             SourceCache cacheFile ->
                 Right <$> runSourceCache cacheFile
         putMVar quit ()

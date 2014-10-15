@@ -37,10 +37,10 @@ module Marquise.Types
 
       -- * Errors
     , Marquise
-    , unwrap, unMarquise
+    , unwrap, unMarquise, unMarquise'
     , MarquiseErrorType(..)
     , catchSyncIO, catchTryIO, catchMarquiseP
-    , RecoverInfo(..), Info
+    , ErrorState(..)
 ) where
 
 import           Control.Applicative
@@ -49,7 +49,7 @@ import           Control.Monad.Error
 import           Control.Monad.Morph
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Either
-import           Control.Monad.Trans.State.Strict
+import           Control.Monad.State.Strict
 import           Control.Error.Util
 import           Control.Exception (IOException, SomeException)
 import           Data.HashSet (HashSet)
@@ -58,7 +58,6 @@ import           Data.Either.Combinators
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B8
 import           Data.Word (Word64)
-import           Data.Monoid
 import           Pipes
 import qualified Pipes.Lift as P
 
@@ -126,31 +125,15 @@ unwrapResult = resume . unroll . resultf
 --   that exposes the errors to be unwrapped and restored manually.
 --   See @Marquise.Classes@
 --
-newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseErrorType (StateT Info m) a }
+newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseErrorType (StateT ErrorState m) a }
   deriving ( Functor, Applicative, Monad
-           , MonadError MarquiseErrorType, MonadIO
-           ) --, MonadTrans, MFunctor, MMonad)
+           , MonadError MarquiseErrorType, MonadState ErrorState, MonadIO )
 
 instance MonadTrans Marquise where
   lift = lift
 
-instance MFunctor Marquise where
-  hoist = hoist
-
--- | This is needed for @squash@ to define a generic implementation for @withConnectionT@
---   in terms of @withConnection@. See @Marquise.Classes@.
---
-instance MMonad Marquise where
-  embed f m = Marquise $ ErrorT $ StateT $ \s -> do
-    (a, s1) <- runStateT (runErrorT $ marquise $ f (runStateT (runErrorT $ marquise m) s)) s
-    return $ case a of
-      Left e              -> (Left e,  s1)            -- there is only one state and one error
-      Right (Left e, s2)  -> (Left e,  mappend s2 s1) -- the failure takes precedence as error, merge the 2 states
-      Right (Right x, s2) -> (Right x, mappend s2 s1) -- no error, merge the 2 states
-  {-# INLINE embed #-}
-
 instance MonadTransControl Marquise where
-  data StT Marquise a = StMarquise { unStMarquise :: (Either MarquiseErrorType a, Info) }
+  data StT Marquise a = StMarquise { unStMarquise :: (Either MarquiseErrorType a, ErrorState) }
   liftWith f = Marquise $ ErrorT $ StateT $ \s ->
     liftM (, s)                                                            -- rewrap state
           (liftM return                                                    -- rewrap error
@@ -172,34 +155,36 @@ instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
 -- | Unwrap the insides of a @Marquise@ monad and keep them in the @StT@ from
 --   @monad-control@, so we need to @restoreT@ manually.
 unwrap :: Functor m => Marquise m a -> m (StT Marquise a)
-unwrap = fmap StMarquise . flip runStateT [] . runErrorT . marquise
+unwrap = fmap StMarquise . flip runStateT None . runErrorT . marquise
 
-unMarquise :: Marquise m a -> m (Either MarquiseErrorType a, Info)
-unMarquise = flip runStateT [] . runErrorT . marquise
+unMarquise :: Marquise m a -> m (Either MarquiseErrorType a, ErrorState)
+unMarquise = flip runStateT None . runErrorT . marquise
+
+unMarquise' :: Monad m => Marquise m a -> m (Either MarquiseErrorType a)
+unMarquise' = liftM fst . unMarquise
 
 -- | Information to recover from the failure of an operation.
 --   it is up to the operation to decide what state it needs to recover.
 --
-data RecoverInfo
- = EnumOrigin { origin :: Origin, enumerated :: HashSet Address }
- | ReadPoints { origin :: Origin, addr :: Address, latest :: TimeStamp }
+data ErrorState
+ = EnumOrigin { enumerated :: HashSet Address }
+ | ReadPoints { latest :: TimeStamp }
+ | None
 
--- todo make this a set
-type Info = [RecoverInfo]
-
-instance Show RecoverInfo where
-  show (EnumOrigin o e)   = concat ["failure state: got ", show (HS.size e), " addresses from ", show o]
-  show (ReadPoints o a t) = concat ["failure state: read from ", show o, " ", show a, " last point was ", show t]
+instance Show ErrorState where
+  show (EnumOrigin e) = concat ["failure state: got ", show (HS.size e)]
+  show (ReadPoints t) = concat ["failure state: read last point ", show t]
+  show None           = concat ["failure state: none"]
 
 -- | All possible errors in a Marquise program.
 --
 data MarquiseErrorType
  = InvalidSpoolName   String
  | InvalidOrigin      Origin
- | Timeout                          RecoverInfo -- ^ timeout connecting to backend
+ | Timeout            ErrorState                -- ^ timeout connecting to backend
  | MalformedResponse  String                    -- ^ unexected response from backend
  | VaultaireException SomeException             -- ^ handles all backend exceptions
- | ZMQException       SomeException RecoverInfo -- ^ handles all zmq exceptions
+ | ZMQException       ErrorState  SomeException -- ^ handles all zmq exceptions
  | IOException        IOException               -- ^ handles all IO exceptions
  | Other              String                    -- ^ needed for the @Error@ instance until pipes move to @Except@
 

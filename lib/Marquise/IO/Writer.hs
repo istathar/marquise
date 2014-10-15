@@ -38,11 +38,7 @@ instance MarquiseWriterMonad IO where
 -- | Tries to send some data.
 --   Deals with @Timeout@ @MarquiseError@s by retrying indefinitely.
 --
-trySend :: Origin -> ByteString -> SocketState
-        -> Marquise IO WriteResult -- ^ The errors in here cannot have any @Timeout@s
-                                   --   it might be worth using extensible error sets to assert this, or not.
+trySend :: Origin -> ByteString -> SocketState -> Marquise IO WriteResult
 trySend origin bytes c = do
     send (PassThrough bytes) origin c
-    retryOnTimeout $ recv c
-  where retryOnTimeout :: Marquise IO WriteResult -> Marquise IO WriteResult
-        retryOnTimeout act = act `catchError` (\Timeout -> trySend origin bytes c)
+    recv c

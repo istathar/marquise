@@ -73,20 +73,14 @@ module Marquise.Client
     SimpleBurst(..),
     SimplePoint(..),
     SocketState(..),
-
-    -- * Instances
-    -- module Marquise.IO
 ) where
 
 import           Control.Applicative
 import           Control.Monad.Error
-import           Control.Monad.Trans.State
 import           Crypto.MAC.SipHash
 import           Data.Bits
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import           Data.HashSet (HashSet)
-import qualified Data.HashSet    as HS
 import           Data.Char (isAlphaNum)
 import           Data.Packer
 import           Data.Word (Word64)
@@ -95,13 +89,11 @@ import qualified Pipes.Prelude as P
 import qualified Pipes.Lift    as P
 
 import           Marquise.Classes
---import           Marquise.IO ()
+import           Marquise.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types
 
-
-type Addr = (Address, SourceDict)
 
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
@@ -174,10 +166,10 @@ removeSourceDict addr source_dict origin conn = do
         _ -> error "requestSourceDictRemoval: Invalid response"
 
 -- | Stream read every Address associated with the given Origin
-enumerateOrigin :: forall m conn . MarquiseContentsMonad m conn
+enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
                 -> conn
-                -> Producer Addr (Marquise m) ()
+                -> Producer (Address, SourceDict) (Marquise m) ()
 enumerateOrigin origin conn = do
     lift $ sendContentsRequest ContentsListRequest origin conn
     loop
@@ -338,12 +330,3 @@ flush
     => SpoolFiles
     -> Marquise m ()
 flush = close
-
--- Persistent interface (no timeouts) ------------------------------------------
-
---mustEnumerateOrigin :: MarquiseContentsMonad m conn
---                    => Origin -> conn
---                    -> Producer' (Address, SourceDict) (Marquise m) ()
---mustEnumerateOrigin origin conn
---  = catchMarquiseP (enumerateOrigin origin conn)
---                   (\Timeout -> mustEnumerateOrigin origin conn)

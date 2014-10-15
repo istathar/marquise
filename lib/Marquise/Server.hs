@@ -64,14 +64,14 @@ data ContentsRequest = ContentsRequest Address SourceDict
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
   async $ handleErrors
-        $ unwrapMarquise
+        $ unMarquise
         $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
-  where handleErrors :: IO (Either MarquiseError ()) -> IO ()
-        handleErrors act = act >>= either catchThemAll return
+  where handleErrors :: IO (Either MarquiseErrorType (), ErrorState) -> IO ()
+        handleErrors act = act >>= (either catchThemAll return) . fst
         catchThemAll e = case e of
           -- We can define a "timeout policy" as a config option, i.e. whether to restart
           -- the marquise daemon automatically.
-          Timeout            -> error $ show e
+          (Timeout _)        -> error $ show e
           -- likewise automatic handling of some errors, such as zmq errors can be defined as
           -- config options
           _                  -> error $ show e
@@ -209,7 +209,6 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
 
 
 -- | Updates sourcedict and handles timeouts by always retrying.
---   which means the possible errors in this transformer cannot be @Timeout@.
 tryUpdateSourceDict ::
     Address ->
     SourceDict ->
@@ -217,7 +216,7 @@ tryUpdateSourceDict ::
     SocketState ->
     Marquise IO ()
 tryUpdateSourceDict addr sd origin conn = do
-    updateSourceDict addr sd origin conn `catchError` (\Timeout -> retryUpdate)
+    updateSourceDict addr sd origin conn `catchError` (\(Timeout _) -> retryUpdate)
   where
     retryUpdate :: Marquise IO ()
     retryUpdate = do

@@ -13,8 +13,7 @@
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.IO.Connection
-(
-    withConnection,
+(   withConnection,
     withConnectionT,
     send,
     recv,
@@ -22,7 +21,7 @@ module Marquise.IO.Connection
 ) where
 
 import           Control.Monad.Error
-import           Control.Monad.Morph
+import           Control.Monad.State.Strict
 import           Control.Monad.Trans.Control
 import           Data.List.NonEmpty (fromList)
 import           System.ZMQ4 (Socket, Poll(..), Event(..), Dealer(..))
@@ -35,16 +34,15 @@ import           Vaultaire.Types
 data SocketState = SocketState (Socket Dealer) String
 
 -- | Performs operation f through broker.
---   This can be thought of as adding marquise errors to something to an error (effect) set.
-withConnection :: String -> (SocketState -> IO a) -> Marquise IO a
-withConnection broker f = catchSyncIO ZMQException $
+withConnection :: String -> (SocketState -> IO a) -> IO a
+withConnection broker f =
     Z.withContext $ \ctx ->
     Z.withSocket ctx Dealer $ \s -> do
         Z.connect s broker
         f (SocketState s broker)
 
 withConnectionT :: String -> (SocketState -> Marquise IO a) -> Marquise IO a
-withConnectionT broker act = squash $ restoreT $ withConnection broker (unwrap . act)
+withConnectionT broker act = restoreT $ withConnection broker (unwrap . act)
 
 send :: WireFormat request
      => request
@@ -52,18 +50,19 @@ send :: WireFormat request
      -> SocketState
      -> Marquise IO ()
 send request (Origin origin) (SocketState sock _)
-  = catchSyncIO ZMQException
-  $ Z.sendMulti sock (fromList [origin, toWire request])
+  = do recover <- get
+       catchSyncIO (ZMQException recover) $ Z.sendMulti sock (fromList [origin, toWire request])
 
 recv :: WireFormat response
      => SocketState
      -> Marquise IO response
 recv (SocketState sock endpoint) = do
-  poll_result <- catchSyncIO ZMQException
+  recover <- get
+  poll_result <- catchSyncIO (ZMQException recover)
                $ Z.poll timeout [Sock sock [In] Nothing]
   case poll_result of
     [[In]] -> do
-      resp  <- catchSyncIO ZMQException
+      resp  <- catchSyncIO (ZMQException recover)
              $ Z.receiveMulti sock
       case resp of
           [msg] -> either (throwError . VaultaireException) return $ fromWire msg
@@ -73,8 +72,9 @@ recv (SocketState sock endpoint) = do
       -- Timeout, reconnect the socket so that we can be sure that a late
       -- response on the current connection isn't confused with a
       -- response to a later request.
-      catchSyncIO ZMQException $ Z.disconnect sock endpoint
-      catchSyncIO ZMQException $ Z.connect sock endpoint
-      throwError Timeout
+      catchSyncIO (ZMQException recover) $ do
+        Z.disconnect sock endpoint
+        Z.connect sock endpoint
+      throwError $ Timeout recover
     _    -> throwError $ Other "Marquise.IO.Connection.recv: impossible"
   where timeout = 60000 -- milliseconds, 60s

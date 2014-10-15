@@ -165,7 +165,6 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                 threadDelay idleTime
                 return (initial, flush_time)
 
-
         done <- isJust <$> tryReadMVar shutdown
 
         if done
@@ -184,7 +183,6 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
         liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)
         lift (tryUpdateSourceDict addr source_dict origin conn)
-
 
 tryUpdateSourceDict ::
     Address ->

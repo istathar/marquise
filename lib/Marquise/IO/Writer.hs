@@ -27,16 +27,8 @@ import Vaultaire.Types
 instance MarquiseWriterMonad IO where
     transmitBytes broker origin bytes =
         withConnection ("tcp://" ++ broker ++ ":5560") $ \c -> do
-            result <- trySend origin bytes c
+            send (PassThrough bytes) origin c
+            result <- recv c
             case result of
                 OnDisk -> return ()
                 InvalidWriteOrigin -> throw InvalidOrigin
-
--- | Tries to send some data, automatically retrying on timeout
-trySend :: Origin -> ByteString -> SocketState -> IO WriteResult
-trySend origin bytes c = do
-    send (PassThrough bytes) origin c
-    recv c `catch` retryOnTimeout
-  where
-    retryOnTimeout :: MarquiseTimeout -> IO WriteResult
-    retryOnTimeout _ = trySend origin bytes c

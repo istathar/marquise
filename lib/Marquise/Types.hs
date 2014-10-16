@@ -33,7 +33,8 @@ module Marquise.Types
     , SimplePoint(..), ExtendedPoint(..)
 
       -- * Results
-    , Result, wrapResult, unwrapResult
+    , Result(..)
+    , ignoreFirst
 
       -- * Errors
     , Marquise
@@ -103,17 +104,16 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 -- Result ----------------------------------------------------------------------
 
 -- | A type-level fixed point.
-newtype Fix f         = Mu      { unroll :: (f (Fix f)) }
-
--- | The query output type with the return type left untied.
-data    ResultF a m r = ResultF { resume :: Producer a m r }
+newtype Fix f         = Mu      { _unroll :: (f (Fix f)) }
 
 -- | The query output type with itself as the return type.
-newtype Result a m    = Result  { resultf :: Fix (ResultF a m) }
+newtype Result a m    = Result  { _result :: Producer a m (Maybe (Fix (Producer a m))) }
 
-wrapResult   = Result . Mu     . ResultF
-unwrapResult = resume . unroll . resultf
-
+ignoreFirst :: Monad m => Result a m -> Result a m
+ignoreFirst (Result p) = Result $ do
+  x <- lift $ next p
+  case x of Left _          -> return Nothing
+            Right (_, rest) -> rest
 
 -- Errors ----------------------------------------------------------------------
 

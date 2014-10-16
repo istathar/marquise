@@ -59,7 +59,11 @@ module Marquise.Client
     withReaderConnection,
     withReaderConnectionT,
     readExtended,
+    readExtendedPoints,
+    readExtendedPointsResume,
     readSimple,
+    readSimplePoints,
+    readSimplePointsResume,
     decodeExtended,
     decodeSimple,
 
@@ -77,6 +81,7 @@ module Marquise.Client
 
 import           Control.Applicative
 import           Control.Monad.Error
+import           Control.Monad.State.Strict
 import           Crypto.MAC.SipHash
 import           Data.Bits
 import           Data.ByteString (ByteString)
@@ -84,12 +89,12 @@ import qualified Data.ByteString as BS
 import           Data.Char (isAlphaNum)
 import           Data.Packer
 import           Data.Word (Word64)
+import qualified Data.HashSet  as HS
 import           Pipes
 import qualified Pipes.Prelude as P
-import qualified Pipes.Lift    as P
 
 import           Marquise.Classes
-import           Marquise.IO ()
+--import           Marquise.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types
@@ -177,12 +182,30 @@ enumerateOrigin origin conn = do
     loop = do
         resp <- lift $ recvContentsResponse conn
         case resp of
-            ContentsListEntry addr dict ->
-                yield (addr, dict) >> loop
-            EndOfContentsList ->
-                return ()
-            _ ->
-                error "enumerateOrigin loop: Invalid response"
+            ContentsListEntry addr dict -> do
+                yield (addr, dict)
+                -- add the new address to this operation's error state
+                -- so it can be ignored if the operation is resumed.
+                lift $ get >>= put . EnumOrigin . HS.insert addr . enumerated
+                loop
+            EndOfContentsList -> return ()
+            _ -> error "enumerateOrigin loop: Invalid response"
+
+-- | Like @enumerateOrigin@, but also returns a resumption pipe
+--   for the user to run and get the rest of the addresses in a consistent manner
+--   (i.e. any addresses already yielded will be ignored)
+--
+enumerateOriginResume :: MarquiseContentsMonad m conn
+                      => Origin
+                      -> conn
+                      -> Result (Address, SourceDict) (Marquise m)
+enumerateOriginResume origin conn = Result $ catchMarquiseP
+    (enumerateOrigin origin conn >> return Nothing)
+    (\x -> case x of
+      (Timeout      (EnumOrigin seen))   -> _result (enumerateOriginResume origin conn) >-> stop seen
+      (ZMQException (EnumOrigin seen) _) -> _result (enumerateOriginResume origin conn) >-> stop seen
+      _                                  -> throwError x)
+    where stop x = P.filter (flip HS.member x . fst)
 
 -- | Stream read every SimpleBurst from the Address between the given times
 readSimple :: MarquiseReaderMonad m conn
@@ -208,6 +231,40 @@ readSimple addr start end origin conn = do
             _ ->
                 error "readSimple loop: Invalid response"
 
+-- | Like @readSimple@ but also decodes the points.
+--
+readSimplePoints
+    :: MarquiseReaderMonad m conn
+    => Address
+    -> TimeStamp
+    -> TimeStamp
+    -> Origin
+    -> conn
+    -> Producer' SimplePoint (Marquise m) ()
+readSimplePoints addr start end origin conn
+    = for (readSimple addr start end origin conn >-> decodeSimple)
+          (\point -> do put $ ReadPoints $ simpleTime point
+                        yield point)
+
+-- | Like @readSimplePoints@, but also returns a resumption pipe that we can run and
+--   get the rest of the result.
+--
+readSimplePointsResume
+    :: MarquiseReaderMonad m conn
+    => Address
+    -> TimeStamp
+    -> TimeStamp
+    -> Origin
+    -> conn
+    -> Result SimplePoint (Marquise m)
+readSimplePointsResume addr start end origin conn = Result $ catchMarquiseP
+    (readSimplePoints addr start end origin conn >> return Nothing)
+    (\x -> case x of
+      -- to resume, read from the last point yielded (exclusive)
+      Timeout (ReadPoints t)        -> _result (ignoreFirst $ readSimplePointsResume addr t end origin conn)
+      ZMQException (ReadPoints t) _ -> _result (ignoreFirst $ readSimplePointsResume addr t end origin conn)
+      _                             -> throwError x)
+
 -- | Stream read every ExtendedBurst from the Address between the given times
 readExtended :: MarquiseReaderMonad m conn
              => Address
@@ -228,7 +285,41 @@ readExtended addr start end origin conn = do
             EndOfStream ->
                 return ()
             _ ->
-                error "readSimple loop: Invalid response"
+                error "readExtended loop: Invalid response"
+
+-- | Like @readExtended@ but also decodes the points.
+--
+readExtendedPoints
+    :: MarquiseReaderMonad m conn
+    => Address
+    -> TimeStamp
+    -> TimeStamp
+    -> Origin
+    -> conn
+    -> Producer' ExtendedPoint (Marquise m) ()
+readExtendedPoints addr start end origin conn
+    = for (readExtended addr start end origin conn >-> decodeExtended)
+          (\point -> do put $ ReadPoints $ extendedTime point
+                        yield point)
+
+-- | Like @readExtendedPoints@, but also returns a resumption pipe that we can run and
+--   get the rest of the result.
+--
+readExtendedPointsResume
+    :: MarquiseReaderMonad m conn
+    => Address
+    -> TimeStamp
+    -> TimeStamp
+    -> Origin
+    -> conn
+    -> Result ExtendedPoint (Marquise m)
+readExtendedPointsResume addr start end origin conn = Result $ catchMarquiseP
+    (readExtendedPoints addr start end origin conn >> return Nothing)
+    (\x -> case x of
+      -- to resume, read from the last point yielded (exclusive)
+      Timeout (ReadPoints t)        -> _result (ignoreFirst $ readExtendedPointsResume addr t end origin conn)
+      ZMQException (ReadPoints t) _ -> _result (ignoreFirst $ readExtendedPointsResume addr t end origin conn)
+      _                             -> throwError x)
 
 -- | Stream converts raw SimpleBursts into SimplePoints
 decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint (Marquise m) ()

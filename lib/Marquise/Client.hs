@@ -47,6 +47,7 @@ module Marquise.Client
     updateSourceDict,
     removeSourceDict,
     enumerateOrigin,
+    enumerateOriginResume,
 
     -- | * Queuing data to be sent to vaultaire
     createSpoolFiles,
@@ -94,7 +95,7 @@ import           Pipes
 import qualified Pipes.Prelude as P
 
 import           Marquise.Classes
---import           Marquise.IO ()
+--import           Marquise.Client.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types

@@ -11,9 +11,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Marquise.IO.Contents
-(
-) where
+module Marquise.IO.Contents where
 
 import Marquise.Classes
 import Marquise.IO.Connection

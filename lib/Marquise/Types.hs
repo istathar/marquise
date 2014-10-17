@@ -33,7 +33,7 @@ module Marquise.Types
     , SimplePoint(..), ExtendedPoint(..)
 
       -- * Results
-    , Result(..)
+    , Result(..), Fix(..)
     , ignoreFirst
 
       -- * Errors
@@ -41,6 +41,7 @@ module Marquise.Types
     , unwrap, unMarquise, unMarquise'
     , MarquiseErrorType(..)
     , catchSyncIO, catchTryIO, catchMarquiseP
+    , withMarquiseHandler
     , ErrorState(..)
 ) where
 
@@ -104,7 +105,7 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 -- Result ----------------------------------------------------------------------
 
 -- | A type-level fixed point.
-newtype Fix f         = Mu      { _unroll :: (f (Fix f)) }
+newtype Fix f = Mu { _unroll :: (f (Fix f)) }
 
 -- | The query output type with itself as the return type.
 newtype Result a m    = Result  { _result :: Producer a m (Maybe (Fix (Producer a m))) }
@@ -131,6 +132,9 @@ newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseErrorType (StateT E
 
 instance MonadTrans Marquise where
   lift = lift
+
+instance MFunctor Marquise where
+  hoist = hoist
 
 instance MonadTransControl Marquise where
   data StT Marquise a = StMarquise { unStMarquise :: (Either MarquiseErrorType a, ErrorState) }
@@ -217,3 +221,6 @@ catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
 -- | Catch only @IOException@s
 catchTryIO  :: IO a -> Marquise IO a
 catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO
+
+withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
+withMarquiseHandler f act = unMarquise' act >>= either f return

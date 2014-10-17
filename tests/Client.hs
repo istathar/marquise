@@ -1,54 +1,46 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
-
-module Main where
-
-import Marquise.Classes
-import Marquise.Client
-import Marquise.Types
+import Pipes
+import Pipes.Internal
+import Control.Monad.State.Strict
+import qualified Pipes.Prelude as P
 import Test.Hspec
 
--- we assume successes in this test, tests for failures (timeouts etc) need to be added
+import Marquise.Client
+import Marquise.Types
+import Store
 
-ns1, ns2 :: Monad m => m SpoolName
-ns1 = withMarquiseHandler (error . show) $ makeSpoolName "ns1"
-ns2 = withMarquiseHandler (error . show) $ makeSpoolName "ns2"
 
-main :: IO ()
-main = hspec suite
+main = undefined
 
-suite :: Spec
-suite =
-    describe "IO MarquiseClientMonad and MarquiseServerMonad" $
-        it "reads appends, then cleans up when nextBurst is called" $ do
-            (bytes1, bytes2, contents) <- withMarquiseHandler (error . show) $ do
-              sf1 <- createSpoolFiles "ns1"
-              sf2 <- createSpoolFiles "ns2"
+readTests :: Spec
+readTests = do
+  describe "Read: timeouts after a few points" $
+    it "yields some points and returns a resumption pipe that can yield the rest" $ do
+      (result0, resume0) <- run vault            $ readSimplePointsResume addr start end org
+      (result1, resume1) <- run vaultWithTimeout $ readSimplePointsResume addr start end org
+      (result2, _)       <- run vault            $ resume1
 
-              appendPoints sf1 "BBBBBBBBAAAAAAAACCCCCCCC"
-              appendPoints sf1 "DBBBBBBBAAAAAAAACCCCCCCC"
-              appendPoints sf2 "FBBBBBBBAAAAAAAACCCCCCCC"
-              appendContents sf1 "contents"
+      resume0 `shouldBe` Nothing
+      result0 `shouldBe` result1 ++ result2
 
-              (bytes1,close_f1)   <- loop (nextPoints =<< ns1)
-              (bytes2,close_f2)   <- loop (nextPoints =<< ns2)
-              (contents,close_f3) <- loop (nextContents =<< ns1)
+  where vault = undefined
+        vaultWithTimeout = undefined
+        addr = undefined
+        start = undefined
+        end = undefined
+        org = undefined
+        run ps act = flip evalState ps
+                   $ store
+                   $ withMarquiseHandler (error . show)
+                   $ withReaderConnectionT "user"
+                   $ \conn -> toListM' $ _result $ act conn
 
-              catchTryIO $ do
-                close_f1
-                close_f2
-                close_f3
-
-              return (bytes1, bytes2, contents)
-
-            bytes1 `shouldBe` "BBBBBBBBAAAAAAAACCCCCCCC\
-                              \DBBBBBBBAAAAAAAACCCCCCCC"
-            bytes2 `shouldBe` "FBBBBBBBAAAAAAAACCCCCCCC"
-            contents `shouldBe` "contents"
-
-  where
-    loop x = do
-        x' <- x
-        case x' of
-            Just result -> return result
-            Nothing -> loop x
+-- | Converts an effectful producer to a list, preserving its return value.
+toListM' :: Monad m => Producer a m r -> m ([a], r)
+toListM' = loop
+  where loop p = case p of
+          Request v _  -> closed v
+          Respond a fu -> do
+              (as, r) <- loop (fu ())
+              return ((a:as), r)
+          M         m  -> m >>= loop
+          Pure      r  -> return ([], r)

@@ -4,10 +4,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
+
 module Store where
 
 import Control.Applicative
-import Control.Monad.State.Strict
+import Control.Monad.State
 import Control.Monad.Error
 import Control.Lens hiding (act, op)
 import Data.Map (Map)
@@ -16,6 +19,7 @@ import qualified Data.Map as M
 import Vaultaire.Types
 import Marquise.Types
 import Marquise.Classes
+
 
 data PureStore
    = PureStore { _contents      :: [Data (Address, SourceDict)]
@@ -26,10 +30,11 @@ data PureStore
                , _pointsConns   :: Map Name PointsConn }
 
 data Data a = Data a | FakeError
+     deriving Show
 
--- current operation and last sent response
-type ContentsConn = (ContentsOperation, Maybe ContentsResponse)
-type PointsConn   = (ReadRequest,       Maybe ReadStream)
+-- current operation and index into response "stream"
+type ContentsConn = (ContentsOperation, Int)
+type PointsConn   = (ReadRequest,       Int)
 
 newtype Name = Name String
         deriving (Eq, Ord)
@@ -40,36 +45,38 @@ makeLenses ''PureStore
 makeLenses ''Store
 
 instance MarquiseContentsMonad Store Name where
-  sendContentsRequest op _ i = lift $ contentsConns %= M.insert i (op, Nothing)
+  -- "connect" to the purestore
+  sendContentsRequest op _ i = lift $ contentsConns %= M.insert i (op, 0)
+
+  -- "receive" responses
   recvContentsResponse i = do
-    conn <- lift $ use contentsConns >>= return . M.lookup i
-    maybe (throwError $ Other "no connection")
-          (\c -> case fst c of ContentsListRequest -> lift (use contents) >>= next c)
-          conn
-    where next _ [] = return EndOfContentsList
-          next _ (FakeError:_) = get >>= throwError . Timeout
-          next c (Data (a,d):xs) = let resp = ContentsListEntry a d
-                                      in  if Just resp == snd c
-                                          then next c xs
-                                          else send resp
-          send resp = do lift $ contentsConns %= M.adjust (set _2 (Just resp)) i
-                         return resp
+    lift (use contentsConns >>= return . M.lookup i)
+    >>= maybe (throwError $ Other "no connection")
+              (\c -> case fst c of
+                ContentsListRequest ->  lift (use contents)
+                                    >>= go . drop (snd c))
+    where go []              = return EndOfContentsList
+          go (FakeError:_)   = get >>= throwError . Timeout
+          go (Data (a,d):_)
+            = let resp = ContentsListEntry a d
+              in  inc >> return resp
+          inc = lift $ contentsConns %= M.adjust (_2 +~ 1) i
   withContentsConnection n act = act (Name n)
 
 instance MarquiseReaderMonad Store Name where
-  sendReaderRequest op _ i = lift $ pointsConns %= M.insert i (op, Nothing)
-  recvReaderResponse i = do
-    conn <- lift $ use pointsConns >>= return . M.lookup i
-    maybe (throwError $ Other "no connection")
-          (\c -> case fst c of SimpleReadRequest a s e -> lift (use points) >>= next c a s e)
-          conn
-    where next _ _ _ _ [] = return EndOfStream
-          next _ _ _ _ (FakeError:_) = get >>= throwError . Timeout
-          next c a s e (Data (burst, SimplePoint a' t _):xs)
+  sendReaderRequest op _ i = lift $ pointsConns %= M.insert i (op, 0)
+  recvReaderResponse i =
+    lift (use pointsConns >>= return . M.lookup i)
+    >>= maybe (throwError $ Other "no connection")
+              (\c -> case fst c of
+                SimpleReadRequest _ s e ->  lift (use points)
+                                        >>= go s e . drop (snd c))
+    where go _ _ []            = return EndOfStream
+          go _ _ (FakeError:_) = get >>= throwError . Timeout
+          go s e (Data (burst, SimplePoint _ t _):xs)
             = let resp = SimpleStream burst
-              in  if   or [a /= a', t < s, t >= e, Just resp == snd c]
-                  then next c a s e xs
-                  else send resp
-          send resp = do lift $ pointsConns %= M.adjust (set _2 (Just resp)) i
-                         return resp
+              in  if   or [t < s, t >= e]
+                  then inc >> go s e xs
+                  else inc >> return resp
+          inc = lift $ pointsConns %= M.adjust (_2 +~ 1) i
   withReaderConnection n act = act (Name n)

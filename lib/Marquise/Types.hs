@@ -15,6 +15,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 -- Our Base/BaseControl instances are simple enough to assert that
 -- that they are decidable, monad-control needs this too.
@@ -33,7 +34,9 @@ module Marquise.Types
     , SimplePoint(..), ExtendedPoint(..)
 
       -- * Results
-    , Result(..), Fix(..)
+    , Result(..), Resume(..), Fix(..)
+    , catchRecover
+    , mkResumption
     , ignoreFirst
 
       -- * Errors
@@ -51,6 +54,7 @@ import           Control.Monad.Error
 import           Control.Monad.Morph
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Either
+import           Control.Monad.Trans.State.Strict
 import           Control.Monad.State.Strict
 import           Control.Error.Util
 import           Control.Exception (IOException, SomeException)
@@ -85,7 +89,7 @@ data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
 data SimplePoint = SimplePoint { simpleAddress :: Address
                                , simpleTime    :: TimeStamp
                                , simplePayload :: Word64 }
-  deriving Show
+  deriving (Show, Eq)
 
 
 -- | ExtendedPoints are simply wrapped packets for Vaultaire
@@ -99,7 +103,7 @@ data SimplePoint = SimplePoint { simpleAddress :: Address
 data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
                                    , extendedTime    :: TimeStamp
                                    , extendedPayload :: ByteString }
-  deriving Show
+  deriving (Show, Eq)
 
 
 -- Result ----------------------------------------------------------------------
@@ -107,10 +111,25 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 -- | A type-level fixed point.
 newtype Fix f = Mu { _unroll :: (f (Fix f)) }
 
--- | The query output type with itself as the return type.
-newtype Result a m    = Result  { _result :: Producer a m (Maybe (Fix (Producer a m))) }
+-- | A @Producer a m x@ where @x@ is @Producer a m x@, used to return the same pipe type.
+newtype Resume a m = Resume { _resume :: Fix (Producer a m) }
 
-ignoreFirst :: Monad m => Result a m -> Result a m
+-- | A resumption producer that yields @a@ and might return a continuation that can be
+--   run (with the same connection or a new one) to get the rest of the results.
+newtype Result a m conn = Result { _result :: Producer a m (Maybe (conn -> Result a m conn)) }
+
+catchRecover
+  :: (Monad m)
+  => Producer a (Marquise m) ()
+  -> (MarquiseErrorType -> Result a (Marquise m) conn)
+  -> Result a (Marquise m) conn
+catchRecover p handler = Result $ catchMarquiseP (p >> return Nothing) (\e -> _result $ handler e)
+
+mkResumption :: Monad m => (conn -> Result a m conn) -> Result a m conn
+mkResumption act = Result $ return $ Just $ \conn2 -> act conn2
+
+-- | Ignores the first streamed element.
+ignoreFirst :: Monad m => Result a m c -> Result a m c
 ignoreFirst (Result p) = Result $ do
   x <- lift $ next p
   case x of Left _          -> return Nothing
@@ -131,10 +150,7 @@ newtype Marquise m a = Marquise { marquise :: ErrorT MarquiseErrorType (StateT E
            , MonadError MarquiseErrorType, MonadState ErrorState, MonadIO )
 
 instance MonadTrans Marquise where
-  lift = lift
-
-instance MFunctor Marquise where
-  hoist = hoist
+  lift = Marquise . lift . lift
 
 instance MonadTransControl Marquise where
   data StT Marquise a = StMarquise { unStMarquise :: (Either MarquiseErrorType a, ErrorState) }
@@ -195,7 +211,7 @@ data MarquiseErrorType
 instance Show MarquiseErrorType where
   show (InvalidSpoolName s)     = "marquise: invalid spool name: "  ++ s
   show (InvalidOrigin x)        = "marquise: invalid origin: "      ++ (B8.unpack $ unOrigin x)
-  show (Timeout _)              = "marquise: timeout"
+  show (Timeout x)              = "marquise: timeout at "           ++ show x
   show (MalformedResponse s)    = "marquise: unexpected response: " ++ s
   show (VaultaireException e)   = "marquise: vaultaire error: "     ++ show e
   show (ZMQException       e _) = "marquise: ZMQ error: "           ++ show e

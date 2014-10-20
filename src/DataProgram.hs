@@ -36,6 +36,7 @@ import System.IO
 import Text.Printf
 
 import Marquise.Client
+import Marquise.Client ()
 import Marquise.Types
 import Package (package, version)
 import Vaultaire.Util

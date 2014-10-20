@@ -82,7 +82,7 @@ module Marquise.Client
 
 import           Control.Applicative
 import           Control.Monad.Error
-import           Control.Monad.State.Strict
+import           Control.Monad.State
 import           Crypto.MAC.SipHash
 import           Data.Bits
 import           Data.ByteString (ByteString)
@@ -95,11 +95,10 @@ import           Pipes
 import qualified Pipes.Prelude as P
 
 import           Marquise.Classes
---import           Marquise.Client.IO ()
+import           Marquise.IO ()
 import           Marquise.IO.Connection
 import           Marquise.Types
 import           Vaultaire.Types
-
 
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
@@ -199,13 +198,15 @@ enumerateOrigin origin conn = do
 enumerateOriginResume :: MarquiseContentsMonad m conn
                       => Origin
                       -> conn
-                      -> Result (Address, SourceDict) (Marquise m)
-enumerateOriginResume origin conn = Result $ catchMarquiseP
-    (enumerateOrigin origin conn >> return Nothing)
+                      -> Result (Address, SourceDict) (Marquise m) conn
+enumerateOriginResume origin conn = catchRecover
+    (enumerateOrigin origin conn)
     (\x -> case x of
-      (Timeout      (EnumOrigin seen))   -> _result (enumerateOriginResume origin conn) >-> stop seen
-      (ZMQException (EnumOrigin seen) _) -> _result (enumerateOriginResume origin conn) >-> stop seen
-      _                                  -> throwError x)
+      Timeout (EnumOrigin seen)
+        -> mkResumption $ \c -> Result $ _result (enumerateOriginResume origin c) >-> stop seen
+      (ZMQException (EnumOrigin seen) _)
+        -> mkResumption $ \c -> Result $ _result (enumerateOriginResume origin c) >-> stop seen
+      _ -> Result $ throwError x)
     where stop x = P.filter (flip HS.member x . fst)
 
 -- | Stream read every SimpleBurst from the Address between the given times
@@ -244,7 +245,7 @@ readSimplePoints
     -> Producer' SimplePoint (Marquise m) ()
 readSimplePoints addr start end origin conn
     = for (readSimple addr start end origin conn >-> decodeSimple)
-          (\point -> do put $ ReadPoints $ simpleTime point
+          (\point -> do lift $ put $ ReadPoints $ simpleTime point
                         yield point)
 
 -- | Like @readSimplePoints@, but also returns a resumption pipe that we can run and
@@ -257,14 +258,16 @@ readSimplePointsResume
     -> TimeStamp
     -> Origin
     -> conn
-    -> Result SimplePoint (Marquise m)
-readSimplePointsResume addr start end origin conn = Result $ catchMarquiseP
-    (readSimplePoints addr start end origin conn >> return Nothing)
+    -> Result SimplePoint (Marquise m) conn
+readSimplePointsResume addr start end origin conn = catchRecover
+    (readSimplePoints addr start end origin conn)
     (\x -> case x of
       -- to resume, read from the last point yielded (exclusive)
-      Timeout (ReadPoints t)        -> _result (ignoreFirst $ readSimplePointsResume addr t end origin conn)
-      ZMQException (ReadPoints t) _ -> _result (ignoreFirst $ readSimplePointsResume addr t end origin conn)
-      _                             -> throwError x)
+      Timeout (ReadPoints t)
+        -> mkResumption $ \conn' -> ignoreFirst $ readSimplePointsResume addr t end origin conn'
+      ZMQException (ReadPoints t) _
+        -> mkResumption $ \conn' -> ignoreFirst $ readSimplePointsResume addr t end origin conn'
+      _ -> Result $ throwError x)
 
 -- | Stream read every ExtendedBurst from the Address between the given times
 readExtended :: MarquiseReaderMonad m conn
@@ -300,7 +303,7 @@ readExtendedPoints
     -> Producer' ExtendedPoint (Marquise m) ()
 readExtendedPoints addr start end origin conn
     = for (readExtended addr start end origin conn >-> decodeExtended)
-          (\point -> do put $ ReadPoints $ extendedTime point
+          (\point -> do lift $ put $ ReadPoints $ extendedTime point
                         yield point)
 
 -- | Like @readExtendedPoints@, but also returns a resumption pipe that we can run and
@@ -313,14 +316,16 @@ readExtendedPointsResume
     -> TimeStamp
     -> Origin
     -> conn
-    -> Result ExtendedPoint (Marquise m)
-readExtendedPointsResume addr start end origin conn = Result $ catchMarquiseP
-    (readExtendedPoints addr start end origin conn >> return Nothing)
+    -> Result ExtendedPoint (Marquise m) conn
+readExtendedPointsResume addr start end origin conn = catchRecover
+    (readExtendedPoints addr start end origin conn)
     (\x -> case x of
       -- to resume, read from the last point yielded (exclusive)
-      Timeout (ReadPoints t)        -> _result (ignoreFirst $ readExtendedPointsResume addr t end origin conn)
-      ZMQException (ReadPoints t) _ -> _result (ignoreFirst $ readExtendedPointsResume addr t end origin conn)
-      _                             -> throwError x)
+      Timeout (ReadPoints t)
+        -> mkResumption $ \conn' -> ignoreFirst $ readExtendedPointsResume addr t end origin conn'
+      ZMQException (ReadPoints t) _
+        -> mkResumption $ \conn' -> ignoreFirst $ readExtendedPointsResume addr t end origin conn'
+      _ -> Result $ throwError x)
 
 -- | Stream converts raw SimpleBursts into SimplePoints
 decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint (Marquise m) ()

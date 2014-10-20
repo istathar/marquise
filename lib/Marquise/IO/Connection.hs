@@ -21,8 +21,8 @@ module Marquise.IO.Connection
 ) where
 
 import           Control.Monad.Error
-import           Control.Monad.State.Strict
 import           Control.Monad.Trans.Control
+import           Control.Monad.State
 import           Data.List.NonEmpty (fromList)
 import           System.ZMQ4 (Socket, Poll(..), Event(..), Dealer(..))
 import qualified System.ZMQ4 as Z

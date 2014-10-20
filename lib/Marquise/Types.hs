@@ -46,12 +46,16 @@ module Marquise.Types
     , catchSyncIO, catchTryIO, catchMarquiseP
     , withMarquiseHandler
     , ErrorState(..)
+
+      -- * Basic Logging
+    , logInfo, logError
 ) where
 
 import           Control.Applicative
 import           Control.Monad.Base
 import           Control.Monad.Error
 import           Control.Monad.Morph
+import           Control.Monad.Logger hiding (logInfo, logError)
 import           Control.Monad.Trans.Control
 import           Control.Monad.Trans.Either
 import           Control.Monad.Trans.State.Strict
@@ -60,12 +64,15 @@ import           Control.Error.Util
 import           Control.Exception (IOException, SomeException)
 import           Data.HashSet (HashSet)
 import qualified Data.HashSet as HS
+import qualified Data.Text    as T
 import           Data.Either.Combinators
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B8
 import           Data.Word (Word64)
 import           Pipes
 import qualified Pipes.Lift as P
+import qualified System.IO  as IO
+import           System.Log.FastLogger
 
 import           Vaultaire.Types
 
@@ -171,6 +178,16 @@ instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
   restoreM     = defaultRestoreM   unStMMarquise
   {-# INLINE liftBaseWith #-}
   {-# INLINE restoreM #-}
+
+-- | Rudimentary stdout logging
+instance MonadIO m => MonadLogger (Marquise m) where
+  monadLoggerLog _ _ _ msg = liftIO $ B8.hPutStrLn IO.stdout $ fromLogStr $ toLogStr msg
+
+logInfo :: MonadLogger m => String -> m ()
+logInfo = logInfoN . T.pack
+
+logError :: MonadLogger m => String -> m ()
+logError = logErrorN . T.pack
 
 -- | Unwrap the insides of a @Marquise@ monad and keep them in the @StT@ from
 --   @monad-control@, so we need to @restoreT@ manually.

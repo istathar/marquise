@@ -23,7 +23,7 @@ main = hspec readTests
 readTests :: Spec
 readTests = do
   describe "Read: timeouts and recovers" $
-    it "yields some points and returns a resumption pipe that can yield the rest" $ do
+    it "checks that running the resumption after a timeout is equivalent to running the whole request without timeouts" $ do
       v  <- withMarquiseHandler (error . show) vault
       vt <- withMarquiseHandler (error . show) vaultWithTimeout
 

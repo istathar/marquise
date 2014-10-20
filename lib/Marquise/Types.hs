@@ -34,7 +34,7 @@ module Marquise.Types
     , SimplePoint(..), ExtendedPoint(..)
 
       -- * Results
-    , Result(..), Resume(..), Fix(..)
+    , Result(..)
     , catchRecover
     , mkResumption
     , ignoreFirst
@@ -114,12 +114,6 @@ data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
 
 
 -- Result ----------------------------------------------------------------------
-
--- | A type-level fixed point.
-newtype Fix f = Mu { _unroll :: (f (Fix f)) }
-
--- | A @Producer a m x@ where @x@ is @Producer a m x@, used to return the same pipe type.
-newtype Resume a m = Resume { _resume :: Fix (Producer a m) }
 
 -- | A resumption producer that yields @a@ and might return a continuation that can be
 --   run (with the same connection or a new one) to get the rest of the results.

@@ -1,6 +1,8 @@
 # Release Notes
 ## 3.0
 
+The server side is unchanged.
+
 The client interface changed slightly. In particular the return type of all client operations changed from ``m a`` to ``Marquise m a``. For example:
 
 ```

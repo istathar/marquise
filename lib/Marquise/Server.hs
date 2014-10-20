@@ -64,7 +64,7 @@ data ContentsRequest = ContentsRequest Address SourceDict
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
   async $ handleErrors
-        $ unMarquise
+        $ unMarquise'
         $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
   where handleErrors :: IO (Either MarquiseErrorType (), ErrorState) -> IO ()
         handleErrors act = act >>= (either catchThemAll return) . fst

@@ -194,11 +194,11 @@ logError = logErrorN . T.pack
 unwrap :: Functor m => Marquise m a -> m (StT Marquise a)
 unwrap = fmap StMarquise . flip runStateT None . runErrorT . marquise
 
-unMarquise :: Marquise m a -> m (Either MarquiseErrorType a, ErrorState)
-unMarquise = flip runStateT None . runErrorT . marquise
+unMarquise' :: Marquise m a -> m (Either MarquiseErrorType a, ErrorState)
+unMarquise' = flip runStateT None . runErrorT . marquise
 
-unMarquise' :: Monad m => Marquise m a -> m (Either MarquiseErrorType a)
-unMarquise' = liftM fst . unMarquise
+unMarquise :: Monad m => Marquise m a -> m (Either MarquiseErrorType a)
+unMarquise = liftM fst . unMarquise'
 
 -- | Information to recover from the failure of an operation.
 --   it is up to the operation to decide what state it needs to recover.
@@ -256,4 +256,4 @@ catchTryIO  :: IO a -> Marquise IO a
 catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO
 
 withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
-withMarquiseHandler f act = unMarquise' act >>= either f return
+withMarquiseHandler f act = unMarquise act >>= either f return

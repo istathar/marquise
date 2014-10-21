@@ -1,46 +1,43 @@
 # Release Notes
 ## 3.0
 
-The server side is unchanged.
+The client interface changed slightly:
 
-The client interface changed slightly. In particular the return type of all client operations changed from ``m a`` to ``Marquise m a``. For example:
+  * The return type changed from ``m a`` to ``Marquise m a`` for all client operations.
+  * New operations: ``enumerateOriginResume``, ``readSimpleResume`` and ``readExtendedResume``
+    are resumeable operations that return a continuation which can be run to acquire the rest of the data.
+  * ``enumerateOrigin`` changes from
+
+    ```
+    enumerateOrigin :: MarquiseContentsMonad m conn => Origin -> conn
+                    -> Producer (Address, SourceDict) m ()
+    ```
+
+    to
+
+    ```
+    enumerateOrigin :: MarquiseContentsMonad m conn => Policy -> Origin -> conn
+                    -> Producer (Address, SourceDict) (Marquise m) ()
+    ```
+
+    where ``Policy`` are retry policies: ``NoRetry``, ``ForeverRetry`` and ``JustRetry <n>``.
+
+  * Likewise ``readSimplePoints`` and ``readExtendedPoints`` have a retry policy.
+
+
+Existing error behaviour (i.e. crash on all exceptions) can be emulated by changing any existing:
 
 ```
-readSimple :: MarquiseReaderMonad m conn -> .. -> Producer SimpleBurst m ()
-```
-
-is now:
-
-```
-readSimple :: MarquiseReaderMonad m conn -> .. -> Producer SimpleBurst (Marquise m) ()
-```
-
-Existing behaviour (i.e. crash on all exceptions) can be emulated by changing any existing:
-
-```
-withReaderConnection broker $ \conn ->
-  runEffect $ readSimple ...
+withReaderConnection broker $ \conn -> runEffect $ readSimple ...
 ```
 
 to:
 
 ```
-withReaderConnection broker $ \conn ->
-  withMarquieHandler (error . show) $ runEffect $ readSimple ...
+withReaderConnection broker $ \conn -> withMarquieHandler (error . show) $ runEffect $ readSimple ...
 ```
 
-Otherwise errors can be caught and handled inside the Marquise operation.
-Three Marquise client operations, ``enumerateOrigin``, ``readSimple`` and ``readExtended`` now offer
-resumeable versions to continue streaming if there is a **Timeout** or **ZMQ** error.
-
-
-```
-readSimple             :: ... -> Producer SimpleBurst (Marquise m) ()
-readSimplePointsResume :: ... -> Result SimplePoint (Marquise m) conn
-```
-
-Example usage:
-
+Example usage of a manual resume:
 
 ```
 act :: IO ()

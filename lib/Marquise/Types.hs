@@ -215,7 +215,7 @@ data MarquiseErrorType
  | Timeout            ErrorState                -- ^ timeout connecting to backend
  | MalformedResponse  String                    -- ^ unexected response from backend
  | VaultaireException SomeException             -- ^ handles all backend exceptions
- | ZMQException       ErrorState  SomeException -- ^ handles all zmq exceptions
+ | ZMQException       SomeException             -- ^ handles all zmq exceptions
  | IOException        IOException               -- ^ handles all IO exceptions
  | Other              String                    -- ^ needed for the @Error@ instance until pipes move to @Except@
 
@@ -225,7 +225,7 @@ instance Show MarquiseErrorType where
   show (Timeout x)              = "marquise: timeout at "           ++ show x
   show (MalformedResponse s)    = "marquise: unexpected response: " ++ s
   show (VaultaireException e)   = "marquise: vaultaire error: "     ++ show e
-  show (ZMQException       e _) = "marquise: ZMQ error: "           ++ show e
+  show (ZMQException       e)   = "marquise: ZMQ error: "           ++ show e
   show (IOException        e)   = "marquise: IO error: "            ++ show e
   show (Other s)                = "marquise: error: "               ++ s
 

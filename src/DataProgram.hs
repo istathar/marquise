@@ -192,8 +192,7 @@ runPrintDate = do
 runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> Marquise IO ()
 runReadPoints broker raw origin addr start end = do
     withReaderConnectionT broker $ \c ->
-        runEffect $   readSimple addr start end origin c
-                  >-> decodeSimple
+        runEffect $   readSimplePoints ForeverRetry addr start end origin c
                   >-> P.map (displayPoint raw)
                   >-> P.print
 
@@ -235,7 +234,7 @@ displayPoint raw (SimplePoint address timestamp payload) =
 runListContents :: String -> Origin -> Marquise IO ()
 runListContents broker origin = do
     withContentsConnectionT broker $ \c ->
-        runEffect $ enumerateOrigin origin c >-> P.print
+        runEffect $ enumerateOrigin ForeverRetry origin c >-> P.print
 
 runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> Marquise IO ()
 runAddTags    = run updateSourceDict
@@ -284,7 +283,7 @@ main = do
     -- semaphore, such that a user interrupt will kill the program.
 
     linkThread $ do
-        case component of
+        _ <- case component of
             Now ->
                 Right <$> runPrintDate
             -- we always give up in case of failures for now, until resilient versions are added

@@ -187,8 +187,8 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                 threadDelay idleTime
                 return (initial, flush_time)
 
-
         done <- catchTryIO $ isJust <$> tryReadMVar shutdown
+
         if done
         then return final
         else sendContents broker origin sn final cache_file cache_flush_period newFlushTime shutdown
@@ -205,27 +205,7 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
             yield req
     sendSourceDictUpdate conn (ContentsRequest addr source_dict) = do
         liftIO (debugM "Server.sendContents" $ "Sending contents update for " ++ show addr)
-        lift (tryUpdateSourceDict addr source_dict origin conn)
-
-
--- | Updates sourcedict and handles timeouts by always retrying.
-tryUpdateSourceDict ::
-    Address ->
-    SourceDict ->
-    Origin ->
-    SocketState ->
-    Marquise IO ()
-tryUpdateSourceDict addr sd origin conn = do
-    updateSourceDict addr sd origin conn `catchError` (\(Timeout _) -> retryUpdate)
-  where
-    retryUpdate :: Marquise IO ()
-    retryUpdate = do
-        catchTryIO $ warningM "Server.sendContents" $ concat [
-              "Timed out updating source dict for address "
-            , show addr
-            , "; retrying."
-            ]
-        tryUpdateSourceDict addr sd origin conn
+        lift (updateSourceDict addr source_dict origin conn)
 
 parseContentsRequests :: Monad m => L.ByteString -> Producer ContentsRequest m ()
 parseContentsRequests bs =

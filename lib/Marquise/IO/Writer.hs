@@ -28,17 +28,10 @@ import Marquise.Types
 import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
-  transmitBytes broker origin bytes =
-    withConnectionT ("tcp://" ++ broker ++ ":5560") $ \c -> do
-      ack <- trySend origin bytes c
-      case ack of
-        OnDisk             -> return ()
-        InvalidWriteOrigin -> throwError $ InvalidOrigin origin
-
--- | Tries to send some data.
---   Deals with @Timeout@ @MarquiseError@s by retrying indefinitely.
---
-trySend :: Origin -> ByteString -> SocketState -> Marquise IO WriteResult
-trySend origin bytes c = do
-    send (PassThrough bytes) origin c
-    recv c
+    transmitBytes broker origin bytes =
+        withConnectionT ("tcp://" ++ broker ++ ":5560") $ \c -> do
+            send (PassThrough bytes) origin c
+            result <- recv c
+            case result of
+                OnDisk -> return ()
+                InvalidWriteOrigin -> throwError $ InvalidOrigin origin

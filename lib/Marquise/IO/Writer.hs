@@ -20,7 +20,6 @@ module Marquise.IO.Writer
 ) where
 
 import Control.Monad.Error
-import Data.ByteString (ByteString)
 
 import Marquise.Classes
 import Marquise.IO.Connection

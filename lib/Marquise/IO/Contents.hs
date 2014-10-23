@@ -11,15 +11,12 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Marquise.IO.Contents
-(
-) where
+module Marquise.IO.Contents where
 
 import Marquise.Classes
 import Marquise.IO.Connection
 
 instance MarquiseContentsMonad IO SocketState where
-    withContentsConnection broker =
-        withConnection ("tcp://" ++ broker ++ ":5580")
+    withContentsConnection broker = withConnection ("tcp://" ++ broker ++ ":5580")
     sendContentsRequest = send
     recvContentsResponse = recv

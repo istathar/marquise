@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             2.8.3
+version:             3.0
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
@@ -24,8 +24,7 @@ library
   exposed-modules:   Marquise.Client,
                      Marquise.Classes,
                      Marquise.Types,
-                     Marquise.Server,
-                     Marquise.IO.Util
+                     Marquise.Server
 
   other-modules:     Marquise.IO,
                      Marquise.IO.FFI,
@@ -33,15 +32,25 @@ library
                      Marquise.IO.Reader,
                      Marquise.IO.Contents,
                      Marquise.IO.SpoolFile,
-                     Marquise.IO.Connection
+                     Marquise.IO.Connection,
+                     Marquise.Client.Core
 
   build-depends:     base >=3 && <5,
-                     bytestring >= 0.10.2,
-                     text,
+                     mtl,
+                     transformers,
+                     monad-logger,
+                     fast-logger,
+                     either,
+                     errors,
+                     transformers-base,
+                     monad-control,
+                     mmorph,
+                     lifted-async,
                      containers,
                      unordered-containers,
+                     bytestring >= 0.10.2,
+                     text,
                      attoparsec,
-                     mtl,
                      unix,
                      pipes,
                      pipes-group,
@@ -60,7 +69,7 @@ library
                      zeromq4-haskell,
                      time,
                      vaultaire-common >= 2.6.0
-                                        
+
   ghc-options:       -O2
                      -threaded
                      -Wall
@@ -122,6 +131,23 @@ executable data
 
   ghc-prof-options:  -fprof-auto
 
+test-suite           spool-test
+  hs-source-dirs:    tests
+  main-is:           Spool.hs
+  type:              exitcode-stdio-1.0
+  default-language:  Haskell2010
+
+  build-depends:     base >=3 && <5,
+                     hspec,
+                     bytestring,
+                     marquise
+
+  ghc-options:       -O2
+                     -threaded
+                     -Wall
+                     -Wwarn
+                     -fwarn-tabs
+
 test-suite           client-test
   hs-source-dirs:    tests
   main-is:           Client.hs
@@ -129,8 +155,14 @@ test-suite           client-test
   default-language:  Haskell2010
 
   build-depends:     base >=3 && <5,
+                     mtl,
+                     transformers,
+                     containers,
+                     lens,
                      hspec,
                      bytestring,
+                     pipes,
+                     vaultaire-common,
                      marquise
 
   ghc-options:       -O2

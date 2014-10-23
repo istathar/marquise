@@ -20,10 +20,10 @@ import Control.Concurrent.MVar
 import Data.String
 import Options.Applicative
 import Pipes
+import qualified Pipes.Prelude as P
 import System.Locale
 import System.Log.Logger
 import Data.Binary.IEEE754
-import Data.Packer
 import Data.Text (Text)
 import Data.Time
 import Data.Word
@@ -36,6 +36,8 @@ import System.IO
 import Text.Printf
 
 import Marquise.Client
+import Marquise.Client ()
+import Marquise.Types
 import Package (package, version)
 import Vaultaire.Util
 import Vaultaire.Program
@@ -187,12 +189,12 @@ runPrintDate = do
     let time = formatTime defaultTimeLocale "%FT%TZ" now
     putStrLn time
 
-
-runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> IO ()
+runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> Marquise IO ()
 runReadPoints broker raw origin addr start end = do
-    withReaderConnection broker $ \c ->
-        runEffect $ for (readSimple addr start end origin c >-> decodeSimple)
-                        (lift . putStrLn . (displayPoint raw))
+    withReaderConnectionT broker $ \c ->
+        runEffect $   readSimplePoints ForeverRetry addr start end origin c
+                  >-> P.map (displayPoint raw)
+                  >-> P.print
 
 displayPoint :: Bool -> SimplePoint -> String
 displayPoint raw (SimplePoint address timestamp payload) =
@@ -229,12 +231,12 @@ displayPoint raw (SimplePoint address timestamp payload) =
             printf "% 17d" v
 
 
-runListContents :: String -> Origin -> IO ()
+runListContents :: String -> Origin -> Marquise IO ()
 runListContents broker origin = do
-    withContentsConnection broker $ \c ->
-        runEffect $ for (enumerateOrigin origin c) (lift . print)
+    withContentsConnectionT broker $ \c ->
+        runEffect $ enumerateOrigin ForeverRetry origin c >-> P.print
 
-runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> IO ()
+runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> Marquise IO ()
 runAddTags    = run updateSourceDict
 runRemoveTags = run removeSourceDict
 
@@ -256,7 +258,7 @@ run op broker origin addr ts = do
   let dict = case makeSourceDict $ HT.fromList ts of
                   Left e  -> error e
                   Right a -> a
-  withContentsConnection broker $ \c ->
+  withContentsConnectionT broker $ \c ->
         op addr dict origin c
 
 --
@@ -281,19 +283,20 @@ main = do
     -- semaphore, such that a user interrupt will kill the program.
 
     linkThread $ do
-        case component of
+        _ <- case component of
             Now ->
-                runPrintDate
+                Right <$> runPrintDate
+            -- we always give up in case of failures for now, until resilient versions are added
             Read human origin addr start end ->
-                runReadPoints broker human origin addr start end
+                unMarquise $ runReadPoints broker human origin addr start end
             List origin ->
-                runListContents broker origin
+                unMarquise $ runListContents broker origin
             Add origin addr tags ->
-                runAddTags broker origin addr tags
+                unMarquise $ runAddTags broker origin addr tags
             Remove  origin addr tags ->
-                runRemoveTags broker origin addr tags
+                unMarquise $ runRemoveTags broker origin addr tags
             SourceCache cacheFile ->
-                runSourceCache cacheFile
+                Right <$> runSourceCache cacheFile
         putMVar quit ()
 
     takeMVar quit

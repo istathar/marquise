@@ -12,23 +12,25 @@
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TupleSections         #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- Hide warnings for the deprecated ErrorT transformer:
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.IO.Writer
 (
 ) where
 
-import Control.Exception
-import Data.ByteString (ByteString)
+import Control.Monad.Error
+
 import Marquise.Classes
 import Marquise.IO.Connection
 import Marquise.Types
 import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
-    transmitBytes broker origin bytes =
-        withConnection ("tcp://" ++ broker ++ ":5560") $ \c -> do
-            send (PassThrough bytes) origin c
-            result <- recv c
-            case result of
-                OnDisk -> return ()
-                InvalidWriteOrigin -> throw InvalidOrigin
+  transmitBytes broker origin bytes =
+    withConnectionT ("tcp://" ++ broker ++ ":5560") $ \c -> do
+      send (PassThrough bytes) origin c
+      ack <- recv c
+      case ack of
+        OnDisk             -> return ()
+        InvalidWriteOrigin -> throwError $ InvalidOrigin origin

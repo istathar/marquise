@@ -33,8 +33,6 @@
 
 module Marquise.Client.Core where
 
-import Debug.Trace
-
 import           Control.Applicative
 import           Control.Monad.Error
 import           Control.Monad.State

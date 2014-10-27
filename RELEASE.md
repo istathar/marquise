@@ -12,14 +12,28 @@ crashOnMarquiseErrors :: Monad m => Marquise m a -> m a
 -- Ignore Marquise errors, for computations that do not have a return value.
 ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
 
+-- Catch Marquise errors inside a pipeline
+catchMarquiseP
+  :: (Monad m)
+  => Proxy a' a b' b (Marquise m) r
+  -> (MarquiseErrorType -> Proxy a' a b' b (Marquise m) r)
+  -> Proxy a' a b' b (Marquise m) r
 ```
 
-Example usage:
+The first three functions can be used to handle Marquise errors outside pipelines, e.g. ``readSimple .. >-> print``. The last one handles errors inside a pipeline so that the pipe doesn't fail. Example usage:
 
 ```
 withReaderConnection broker $ \conn -> crashOnMarquiseErrors $ runEffect $ readSimple ...
 
 ```
+
+```
+catchMarquiseP (readSimple ..)
+               -- customer recovery from ZMQ exceptions
+	       (\e -> case e of ZMQException ex -> ..)
+```
+
+By default, if you specify a ``ForeverRetry`` or ``JustRetry n`` for Marquise operations, as shown below, they will attempt to recover from some errors, such as ``Timeout``.
 
 ## 3.0.0
 

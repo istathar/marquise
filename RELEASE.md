@@ -1,5 +1,27 @@
 # Release Notes
-## 3.0
+## 3.1.0
+Expose some friendly wrappers for the client interface:
+
+```
+-- Supply an error handler to capture all errors from the Marquise monad.
+withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
+
+-- Crash on all Marquise errors.
+crashOnMarquiseErrors :: Monad m => Marquise m a -> m a
+
+-- Ignore Marquise errors, for computations that do not have a return value.
+ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
+
+```
+
+Example usage:
+
+```
+withReaderConnection broker $ \conn -> crashOnMarquiseErrors $ runEffect $ readSimple ...
+
+```
+
+## 3.0.0
 
 The client interface changed slightly:
 

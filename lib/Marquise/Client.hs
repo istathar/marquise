@@ -49,6 +49,13 @@ module Marquise.Client (
     , SimplePoint(..)
     , SocketState(..)
     , Policy(..)
+
+    -- * Marquise top-level
+    , Marquise
+    , MarquiseErrorType(..)
+    , withMarquiseHandler
+    , catchMarquiseP
+    , unMarquise, unMarquise'
     ) where
 
 import           Control.Monad.Error hiding (forever)

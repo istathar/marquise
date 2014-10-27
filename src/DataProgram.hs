@@ -19,6 +19,7 @@ module Main where
 import Control.Concurrent.MVar
 import Data.String
 import Options.Applicative
+import Options.Applicative.Types
 import Pipes
 import qualified Pipes.Prelude as P
 import System.Locale
@@ -69,6 +70,9 @@ data Component =
                | SourceCache { cacheFile :: FilePath }
 
 type Tag = (Text, Text)
+
+justRead :: Read a => ReadM a
+justRead = readerAsk >>= return . read
 
 helpfulParser :: ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -122,15 +126,15 @@ optionsParser = Options <$> parseBroker
 
 
 parseAddress :: Parser Address
-parseAddress = argument (fmap fromString . str) (metavar "ADDRESS")
+parseAddress = argument (readerAsk >>= return . fromString) (metavar "ADDRESS")
 
 parseOrigin :: Parser Origin
-parseOrigin = argument (fmap mkOrigin . str) (metavar "ORIGIN")
+parseOrigin = argument (readerAsk >>= return . mkOrigin) (metavar "ORIGIN")
   where
     mkOrigin = Origin . S.pack
 
 parseTags :: Parser [Tag]
-parseTags = many $ argument (fmap mkTag . str) (metavar "TAG")
+parseTags = many $ argument (readerAsk >>= return . mkTag) (metavar "TAG")
   where
     mkTag x = case PT.parseOnly tag $ T.pack x of
       Left _  -> error "data: invalid tag format"
@@ -151,14 +155,14 @@ readOptionsParser = Read <$> parseRaw
         <> short 'r'
         <> help "Output values in a raw form (human-readable otherwise)"
 
-    parseStart = option $
+    parseStart = option justRead $
         long "start"
         <> short 's'
         <> value 0
         <> showDefault
         <> help "Start time in nanoseconds since epoch"
 
-    parseEnd = option $
+    parseEnd = option justRead $
         long "end"
         <> short 'e'
         <> value maxBound

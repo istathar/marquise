@@ -17,6 +17,7 @@ import Control.Concurrent.Async
 import qualified Data.ByteString.Char8 as S
 import Data.Monoid
 import Options.Applicative hiding (Parser, option)
+import Options.Applicative.Types
 import qualified Options.Applicative as O
 import System.Log.Logger
 
@@ -33,6 +34,9 @@ data Options = Options
   , cacheFlushFreq :: Integer
   , origin         :: String
   , namespace      :: String }
+
+justRead :: Read a => ReadM a
+justRead = readerAsk >>= return . read
 
 helpfulParser :: O.ParserInfo Options
 helpfulParser = info (helper <*> optionsParser) fullDesc
@@ -75,7 +79,7 @@ optionsParser = Options <$> parseBroker
     -- cache after it finishes reading every spool file. If the cache
     -- hasn't been flushed in the last `t` seconds, it will be flushed
     -- before processing the next spool file.
-    parseCacheFlushFreq = O.option $
+    parseCacheFlushFreq = O.option justRead $
            long "cache-flush-freq"
         <> short 't'
         <> help "Period of time to wait between cache writes, in seconds"

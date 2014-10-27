@@ -56,7 +56,6 @@ import           Marquise.Classes
 import           Marquise.Client (makeSpoolName, updateSourceDict)
 import           Marquise.Types
 import           Marquise.IO ()
-import           Marquise.IO.Connection
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show

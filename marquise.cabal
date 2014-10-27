@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             3.0
+version:             3.0.1
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
@@ -87,7 +87,7 @@ executable marquised
   build-depends:     base >=3 && <5,
                      bytestring,
                      hslogger,
-                     optparse-applicative >=0.9.0 && <0.10.0,
+                     optparse-applicative >= 0.11.0,
                      unix,
                      async,
                      containers,
@@ -110,7 +110,7 @@ executable data
   build-depends:     base >=3 && <5,
                      bytestring,
                      hslogger,
-                     optparse-applicative >=0.9.0 && <0.10.0,
+                     optparse-applicative >= 0.11.0,
                      unix,
                      pipes,
                      text,

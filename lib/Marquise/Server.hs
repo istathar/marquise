@@ -62,19 +62,8 @@ data ContentsRequest = ContentsRequest Address SourceDict
 
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
-  async $ handleErrors
-        $ unMarquise'
+  async $ crashOnMarquiseErrors
         $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
-  where handleErrors :: IO (Either MarquiseErrorType (), ErrorState) -> IO ()
-        handleErrors act = act >>= (either catchThemAll return) . fst
-        catchThemAll e = case e of
-          -- We can define a "timeout policy" as a config option, i.e. whether to restart
-          -- the marquise daemon automatically.
-          (Timeout _)        -> error $ show e
-          -- likewise automatic handling of some errors, such as zmq errors can be defined as
-          -- config options
-          _                  -> error $ show e
-
 
 startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> Marquise IO ()
 startMarquise broker origin name shutdown cache_file cache_flush_period = do

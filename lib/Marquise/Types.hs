@@ -39,13 +39,18 @@ module Marquise.Types
     , mkResumption
     , ignoreFirst
 
-      -- * Errors
+      -- * Marquise monad
     , Marquise
-    , unwrap, unMarquise, unMarquise'
     , MarquiseErrorType(..)
-    , catchSyncIO, catchTryIO, catchMarquiseP
+    , catchMarquiseP
     , withMarquiseHandler
+    , crashOnMarquiseErrors
+    , ignoreMarquiseErrors
+
+      -- * Errors
     , ErrorState(..)
+    , unwrap
+    , catchSyncIO, catchTryIO
 
       -- * Basic Logging
     , logInfo, logError
@@ -249,5 +254,16 @@ catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
 catchTryIO  :: IO a -> Marquise IO a
 catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO
 
+-- Convenient wrappers ---------------------------------------------------------
+
+-- | Supply an error handler to capture all errors from the Marquise monad.
 withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
 withMarquiseHandler f act = unMarquise act >>= either f return
+
+-- | Crash on all Marquise errors.
+crashOnMarquiseErrors :: Monad m => Marquise m a -> m a
+crashOnMarquiseErrors = withMarquiseHandler (error . show)
+
+-- | Ignore Marquise errors, for computations that do not have a return value.
+ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
+ignoreMarquiseErrors = withMarquiseHandler (const $ return ())

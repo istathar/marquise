@@ -42,15 +42,18 @@ module Marquise.Types
       -- * Marquise monad
     , Marquise
     , MarquiseErrorType(..)
-    , catchMarquiseP
+    , catchMarquise
+    , catchMarquiseAll
     , withMarquiseHandler
     , crashOnMarquiseErrors
     , ignoreMarquiseErrors
 
-      -- * Errors
+      -- * Errors recovery
     , ErrorState(..)
     , unwrap
-    , catchSyncIO, catchTryIO
+    , catchSyncIO, catchSyncIO_
+    , catchTryIO, catchTryIO_
+    , recoverable
 
       -- * Basic Logging
     , logInfo, logError
@@ -129,7 +132,7 @@ catchRecover
   => Producer a (Marquise m) ()
   -> (MarquiseErrorType -> Result a (Marquise m) conn)
   -> Result a (Marquise m) conn
-catchRecover p handler = Result $ catchMarquiseP (p >> return Nothing) (\e -> _result $ handler e)
+catchRecover p handler = Result $ catchMarquise (p >> return Nothing) (\e -> _result $ handler e)
 
 mkResumption :: Monad m => (conn -> Result a m conn) -> Result a m conn
 mkResumption act = Result $ return $ Just $ \conn2 -> act conn2
@@ -208,9 +211,9 @@ data ErrorState
  | None
 
 instance Show ErrorState where
-  show (EnumOrigin e) = concat ["failure state: got ", show (HS.size e)]
-  show (ReadPoints t) = concat ["failure state: read last point ", show t]
-  show None           = concat ["failure state: none"]
+  show (EnumOrigin e) = concat ["fail at: got ", show (HS.size e)]
+  show (ReadPoints t) = concat ["fail at: read last point ", show t]
+  show None           = concat ["fail at: none"]
 
 -- | All possible errors in a Marquise program.
 --
@@ -218,43 +221,59 @@ data MarquiseErrorType
  = InvalidSpoolName   String
  | InvalidOrigin      Origin
  | Timeout            ErrorState                -- ^ timeout connecting to backend
- | MalformedResponse  String                    -- ^ unexected response from backend
- | VaultaireException SomeException             -- ^ handles all backend exceptions
- | ZMQException       SomeException             -- ^ handles all zmq exceptions
- | IOException        IOException               -- ^ handles all IO exceptions
+ | MalformedResponse  ErrorState String         -- ^ unexected response from backend
+ | VaultaireException ErrorState SomeException  -- ^ handles all backend exceptions
+ | ZMQException       ErrorState SomeException  -- ^ handles all zmq exceptions
+ | IOException        ErrorState IOException    -- ^ handles all IO exceptions
  | Other              String                    -- ^ needed for the @Error@ instance until pipes move to @Except@
 
 instance Show MarquiseErrorType where
-  show (InvalidSpoolName s)     = "marquise: invalid spool name: "  ++ s
-  show (InvalidOrigin x)        = "marquise: invalid origin: "      ++ (B8.unpack $ unOrigin x)
-  show (Timeout x)              = "marquise: timeout at "           ++ show x
-  show (MalformedResponse s)    = "marquise: unexpected response: " ++ s
-  show (VaultaireException e)   = "marquise: vaultaire error: "     ++ show e
-  show (ZMQException       e)   = "marquise: ZMQ error: "           ++ show e
-  show (IOException        e)   = "marquise: IO error: "            ++ show e
-  show (Other s)                = "marquise: error: "               ++ s
+  show (InvalidSpoolName s)     = concat ["marquise: invalid spool name: ", s]
+  show (InvalidOrigin x)        = concat ["marquise: invalid origin: ", B8.unpack $ unOrigin x]
+  show (Timeout x)              = concat ["marquise: timeout\n", show x]
+  show (MalformedResponse s a)  = concat ["marquise: unexpected response: ", a, "\n", show s]
+  show (VaultaireException s e) = concat ["marquise: vaultaire error: ", show e, "\n", show s]
+  show (ZMQException s e)       = concat ["marquise: ZMQ error: ", show e, "\n", show s]
+  show (IOException s e)        = concat ["marquise: IO error: ", show e, "\n", show s]
+  show (Other s)                = concat ["marquise: error: ", s]
 
 instance Error MarquiseErrorType where
   noMsg = Other "unknown"
 
--- | Catch a Marquise error inside a pipe
-catchMarquiseP
+-- | Errors with an @ErrorState@ inside, which can be used to recover.
+recoverable :: MarquiseErrorType -> Bool
+recoverable (Timeout _)              = True
+recoverable (MalformedResponse _ _)  = True
+recoverable (VaultaireException _ _) = True
+recoverable (ZMQException _ _)       = True
+recoverable (IOException _ _)        = True
+recoverable _                        = False
+
+-- Handle errors insde the pipe -------------------------------------------------
+
+-- | Handle some Marquise errors inside a pipe
+catchMarquise
   :: (Monad m)
   => Proxy a' a b' b (Marquise m) r
   -> (MarquiseErrorType -> Proxy a' a b' b (Marquise m) r)
   -> Proxy a' a b' b (Marquise m) r
-catchMarquiseP act handler
-  = hoist Marquise $ P.catchError (hoist marquise act) (hoist marquise . handler)
+catchMarquise act handler
+  = hoist Marquise
+  $ P.catchError (hoist marquise act) (hoist marquise . handler)
 
--- | Catch all synchorous IO exceptions and wrap them in @ErrorT@
-catchSyncIO :: (SomeException -> MarquiseErrorType) -> IO a -> Marquise IO a
-catchSyncIO f = Marquise . ErrorT . fmap (mapLeft f) . runEitherT . syncIO
+-- | Handle all Marquise errors inside a pipe.
+--   The user is responsible to handling every error case. If there are any unhandled error cases,
+--   the pipe will fail and return the error.
+catchMarquiseAll
+  :: (Monad m)
+  => Proxy a' a b' b (Marquise m) r
+  -> (MarquiseErrorType -> Proxy a' a b' b (Marquise m) r)
+  -> Proxy a' a b' b m (Either MarquiseErrorType r)
+catchMarquiseAll act handler
+  = P.evalStateP None $ P.runErrorP
+  $ P.catchError (hoist marquise act) (hoist marquise . handler)
 
--- | Catch only @IOException@s
-catchTryIO  :: IO a -> Marquise IO a
-catchTryIO = Marquise . ErrorT . fmap (mapLeft IOException) . runEitherT . tryIO
-
--- Convenient wrappers ---------------------------------------------------------
+-- Handle errors outside the pipe -----------------------------------------------
 
 -- | Supply an error handler to capture all errors from the Marquise monad.
 withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
@@ -267,3 +286,22 @@ crashOnMarquiseErrors = withMarquiseHandler (error . show)
 -- | Ignore Marquise errors, for computations that do not have a return value.
 ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
 ignoreMarquiseErrors = withMarquiseHandler (const $ return ())
+
+-- Helpers ---------------------------------------------------------------------
+
+-- | Catch all synchorous exceptions and wrap them in the Marquise monad
+--   (sync exceptions include IO exceptions)
+catchSyncIO :: (SomeException -> MarquiseErrorType) -> IO a -> Marquise IO a
+catchSyncIO constructor = Marquise . ErrorT . fmap (mapLeft constructor) . runEitherT . syncIO
+
+-- | Catch all synchorous exceptions, without an error state handler
+catchSyncIO_ :: (ErrorState -> SomeException -> MarquiseErrorType) -> IO a -> Marquise IO a
+catchSyncIO_ constructor = Marquise . ErrorT . fmap (mapLeft (constructor None)) . runEitherT . syncIO
+
+-- | Catch all IO exceptions and wrap them in the Marquise monad, with a state from which to recover
+catchTryIO :: ErrorState -> IO a -> Marquise IO a
+catchTryIO s = Marquise . ErrorT . fmap (mapLeft (IOException s)) . runEitherT . tryIO
+
+-- | Catch all IO exceptions, without a state from which to recover
+catchTryIO_ :: IO a -> Marquise IO a
+catchTryIO_ = catchTryIO None

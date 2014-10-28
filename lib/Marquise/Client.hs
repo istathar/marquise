@@ -53,7 +53,8 @@ module Marquise.Client (
     -- * Marquise top-level
     , Marquise
     , MarquiseErrorType(..)
-    , catchMarquiseP
+    , catchMarquise
+    , catchMarquiseAll
     , withMarquiseHandler
     , crashOnMarquiseErrors
     , ignoreMarquiseErrors

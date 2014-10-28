@@ -32,7 +32,7 @@ suite =
               (bytes2,close_f2)   <- loop (nextPoints =<< ns2)
               (contents,close_f3) <- loop (nextContents =<< ns1)
 
-              catchTryIO $ do
+              catchTryIO_ $ do
                 close_f1
                 close_f2
                 close_f3

@@ -50,26 +50,28 @@ send :: WireFormat request
      -> SocketState
      -> Marquise IO ()
 send request (Origin origin) (SocketState sock _)
-  = do catchSyncIO ZMQException $ Z.sendMulti sock (fromList [origin, toWire request])
+  = do catchSyncIO_ ZMQException $ Z.sendMulti sock (fromList [origin, toWire request])
 
 recv :: WireFormat response
      => SocketState
      -> Marquise IO response
 recv (SocketState sock endpoint) = do
   recover <- get
-  poll_result <- catchSyncIO ZMQException $ Z.poll timeout [Sock sock [In] Nothing]
+  poll_result <- catchSyncIO (ZMQException recover)
+               $ Z.poll timeout [Sock sock [In] Nothing]
   case poll_result of
     [[In]] -> do
-      resp  <- catchSyncIO ZMQException $ Z.receiveMulti sock
+      resp  <- catchSyncIO (ZMQException recover)
+             $ Z.receiveMulti sock
       case resp of
-          [msg] -> either (throwError . VaultaireException) return $ fromWire msg
-          []    ->         throwError $ MalformedResponse "expected one message, received none"
-          _     ->         throwError $ MalformedResponse "expected one message, received multiple"
+          [msg] -> either (throwError . (VaultaireException recover)) return $ fromWire msg
+          []    ->         throwError $ MalformedResponse recover "expected one message, received none"
+          _     ->         throwError $ MalformedResponse recover "expected one message, received multiple"
     [[]] -> do
       -- Timeout, reconnect the socket so that we can be sure that a late
       -- response on the current connection isn't confused with a
       -- response to a later request.
-      catchSyncIO ZMQException $ do
+      catchSyncIO (ZMQException recover) $ do
         Z.disconnect sock endpoint
         Z.connect sock endpoint
       throwError $ Timeout recover

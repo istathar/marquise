@@ -262,8 +262,8 @@ catchMarquise act handler
   $ P.catchError (hoist marquise act) (hoist marquise . handler)
 
 -- | Handle all Marquise errors inside a pipe.
---   The user is responsible to handling every error case. If there are any unhandled error cases,
---   the pipe will fail and return the error.
+--   The user is responsible to handling every error case.
+--   If there are any unhandled error cases, the pipe will fail and return the error.
 catchMarquiseAll
   :: (Monad m)
   => Proxy a' a b' b (Marquise m) r

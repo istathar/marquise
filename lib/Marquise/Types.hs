@@ -47,6 +47,7 @@ module Marquise.Types
     , withMarquiseHandler
     , crashOnMarquiseErrors
     , ignoreMarquiseErrors
+    , runMarquise
 
       -- * Errors recovery
     , ErrorState(..)
@@ -286,6 +287,10 @@ crashOnMarquiseErrors = withMarquiseHandler (error . show)
 -- | Ignore Marquise errors, for computations that do not have a return value.
 ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
 ignoreMarquiseErrors = withMarquiseHandler (const $ return ())
+
+-- | Runs the Marquise monad and return either an error or the return value
+runMarquise :: Monad m => Marquise m r -> m (Either MarquiseErrorType r)
+runMarquise = unMarquise
 
 -- Helpers ---------------------------------------------------------------------
 

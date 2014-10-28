@@ -62,24 +62,13 @@ data ContentsRequest = ContentsRequest Address SourceDict
 
 runMarquiseDaemon :: String -> Origin -> String -> MVar () -> String -> Integer -> IO (Async ())
 runMarquiseDaemon broker origin namespace shutdown cache_file cache_flush_period =
-  async $ handleErrors
-        $ unMarquise'
+  async $ crashOnMarquiseErrors
         $ startMarquise broker origin namespace shutdown cache_file cache_flush_period
-  where handleErrors :: IO (Either MarquiseErrorType (), ErrorState) -> IO ()
-        handleErrors act = act >>= (either catchThemAll return) . fst
-        catchThemAll e = case e of
-          -- We can define a "timeout policy" as a config option, i.e. whether to restart
-          -- the marquise daemon automatically.
-          (Timeout _)        -> error $ show e
-          -- likewise automatic handling of some errors, such as zmq errors can be defined as
-          -- config options
-          _                  -> error $ show e
-
 
 startMarquise :: String -> Origin -> String -> MVar () -> String -> Integer -> Marquise IO ()
 startMarquise broker origin name shutdown cache_file cache_flush_period = do
-    catchTryIO $ infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
-    init_cache <- catchTryIO $ withFile cache_file ReadWriteMode $ \h -> do
+    catchTryIO_ $ infoM "Server.startMarquise" $ "Reading SourceDict cache from " ++ cache_file
+    init_cache <- catchTryIO_ $ withFile cache_file ReadWriteMode $ \h -> do
         result <- fromWire <$> S.hGetContents h
         case result of
             Left e -> do
@@ -96,26 +85,26 @@ startMarquise broker origin name shutdown cache_file cache_flush_period = do
                            , " hashes from source dict cache."
                            ]
                 return cache
-    catchTryIO $ infoM "Server.startMarquise" "Marquise daemon started"
+    catchTryIO_ $ infoM "Server.startMarquise" "Marquise daemon started"
 
     (points_loop, final_cache) <- do
         sn <- makeSpoolName name
-        catchTryIO $ debugM "Server.startMarquise" "Creating spool directories"
+        catchTryIO_ $ debugM "Server.startMarquise" "Creating spool directories"
         createDirectories sn
-        catchTryIO $ debugM "Server.startMarquise" "Starting point transmitting thread"
+        catchTryIO_ $ debugM "Server.startMarquise" "Starting point transmitting thread"
         points_loop <- AL.async (sendPoints broker origin sn shutdown)
-        currTime <- catchTryIO $ do
+        currTime <- catchTryIO_ $ do
           link points_loop
           debugM "Server.startMarquise" "Starting contents transmitting thread"
           getCurrentTime
         final_cache <- sendContents broker origin sn init_cache cache_file cache_flush_period currTime shutdown
         return (points_loop, final_cache)
 
-    catchTryIO $ do
+    catchTryIO_ $ do
       debugM "Server.startMarquise" "Send loop shut down gracefully, writing out cache"
       S.writeFile cache_file $ toWire final_cache
 
-    catchTryIO $ debugM "Server.startMarquise" "Waiting for points loop thread"
+    catchTryIO_ $ debugM "Server.startMarquise" "Waiting for points loop thread"
     AL.wait points_loop
 
 sendPoints :: String -> Origin -> SpoolName -> MVar () -> Marquise IO ()
@@ -123,14 +112,14 @@ sendPoints broker origin sn shutdown = do
     nexts <- nextPoints sn
     case nexts of
         Just (bytes, seal) -> do
-            catchTryIO $ debugM "Server.sendPoints" "Got points, starting transmission pipe"
+            catchTryIO_ $ debugM "Server.sendPoints" "Got points, starting transmission pipe"
             runEffect $ for (breakInToChunks bytes) sendChunk
-            catchTryIO $ do
+            catchTryIO_ $ do
               debugM "Server.sendPoints" "Transmission complete, cleaning up"
               seal
-        Nothing -> catchTryIO $ threadDelay idleTime
+        Nothing -> catchTryIO_ $ threadDelay idleTime
 
-    done <- catchTryIO $ isJust <$> tryReadMVar shutdown
+    done <- catchTryIO_ $ isJust <$> tryReadMVar shutdown
     unless done (sendPoints broker origin sn shutdown)
   where
     sendChunk chunk = do
@@ -151,7 +140,7 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
         nexts <- nextContents sn
         (final, newFlushTime) <- case nexts of
             Just (bytes, seal) ->  do
-                catchTryIO $ debugM "Server.sendContents" $
+                catchTryIO_ $ debugM "Server.sendContents" $
                     concat
                         [ "Got contents, starting transmission pipe with "
                         , show $ sizeOfSourceCache initial
@@ -162,7 +151,7 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                     runEffect $ for (P.runStateP initial (parseContentsRequests bytes >-> filterSeen))
                                     (sendSourceDictUpdate c)
 
-                newFlushTime' <- catchTryIO $ do
+                newFlushTime' <- catchTryIO_ $ do
                   debugM "Server.sendContents" "Contents transmission complete, cleaning up."
                   debugM "Server.sendContents" $
                       concat
@@ -182,11 +171,11 @@ sendContents broker origin sn initial cache_file cache_flush_period flush_time s
                           return flush_time
                 return (final', newFlushTime')
 
-            Nothing -> catchTryIO $ do
+            Nothing -> catchTryIO_ $ do
                 threadDelay idleTime
                 return (initial, flush_time)
 
-        done <- catchTryIO $ isJust <$> tryReadMVar shutdown
+        done <- catchTryIO_ $ isJust <$> tryReadMVar shutdown
 
         if done
         then return final

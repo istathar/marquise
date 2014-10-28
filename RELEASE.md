@@ -1,5 +1,55 @@
 # Release Notes
-## 3.0
+## 3.1.0
+Expose some friendly wrappers for the client interface.
+
+#### Top-level Marquise errors
+
+```
+-- Supply an error handler to capture all errors from the Marquise monad.
+withMarquiseHandler :: Monad m => (MarquiseErrorType -> m a) -> Marquise m a -> m a
+
+-- Crash on all Marquise errors.
+crashOnMarquiseErrors :: Monad m => Marquise m a -> m a
+
+-- Ignore Marquise errors, for computations that do not have a return value.
+ignoreMarquiseErrors :: Monad m => Marquise m () -> m ()
+```
+
+These can be used to handle Marquise errors outside pipelines, e.g. ``readSimple .. >-> print``. Example:
+
+```
+withReaderConnection broker $ \conn -> crashOnMarquiseErrors $ runEffect $ readSimple ...
+
+```
+
+#### Marquise errors recovery
+
+```
+-- Catch some Marquise errors inside a pipeline
+catchMarquise
+  :: (Monad m)
+  =>                       Proxy a' a b' b (Marquise m) r
+  -> (MarquiseErrorType -> Proxy a' a b' b (Marquise m) r)
+  ->                       Proxy a' a b' b (Marquise m) r
+
+-- Catch all Marquise errors inside a pipeline. The user is responsible to ensure
+-- all errors they want to be caught are dealt with. Any unhandled errors will cause
+-- the pipe to fail and the error to be returned.
+catchMarquiseAll
+  :: (Monad m)
+  =>                       Proxy a' a b' b (Marquise m) r
+  -> (MarquiseErrorType -> Proxy a' a b' b (Marquise m) r)
+  ->                       Proxy a' a b' b  m (Either MarquiseErrorType r)
+```
+
+These handle errors inside a pipeline so that the pipe doesn't fail. Example usage:
+
+```
+-- customer recovery from ZMQ exceptions
+catchMarquise (readSimple ..) (\e -> case e of ZMQException ex -> ..)
+```
+
+## 3.0.0
 
 The client interface changed slightly:
 

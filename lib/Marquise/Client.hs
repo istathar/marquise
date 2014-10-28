@@ -53,9 +53,11 @@ module Marquise.Client (
     -- * Marquise top-level
     , Marquise
     , MarquiseErrorType(..)
+    , catchMarquise
+    , catchMarquiseAll
     , withMarquiseHandler
-    , catchMarquiseP
-    , unMarquise, unMarquise'
+    , crashOnMarquiseErrors
+    , ignoreMarquiseErrors
     ) where
 
 import           Control.Monad.Error hiding (forever)

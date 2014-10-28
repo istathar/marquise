@@ -33,8 +33,6 @@
 
 module Marquise.Client.Core where
 
-import Debug.Trace
-
 import           Control.Applicative
 import           Control.Monad.Error
 import           Control.Monad.State
@@ -154,7 +152,7 @@ readSimple :: MarquiseReaderMonad m conn
            -> Origin
            -> conn
            -> Producer' SimpleBurst (Marquise m) ()
-readSimple addr start end origin conn = trace "read simple" $ do
+readSimple addr start end origin conn = do
     lift $ sendReaderRequest (SimpleReadRequest addr start end) origin conn
     loop
   where

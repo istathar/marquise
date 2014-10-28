@@ -38,7 +38,6 @@ import Text.Printf
 
 import Marquise.Client
 import Marquise.Client ()
-import Marquise.Types
 import Package (package, version)
 import Vaultaire.Util
 import Vaultaire.Program
@@ -289,18 +288,17 @@ main = do
     linkThread $ do
         _ <- case component of
             Now ->
-                Right <$> runPrintDate
-            -- we always give up in case of failures for now, until resilient versions are added
+                runPrintDate
             Read human origin addr start end ->
-                unMarquise $ runReadPoints broker human origin addr start end
+                crashOnMarquiseErrors $ runReadPoints broker human origin addr start end
             List origin ->
-                unMarquise $ runListContents broker origin
+                crashOnMarquiseErrors $ runListContents broker origin
             Add origin addr tags ->
-                unMarquise $ runAddTags broker origin addr tags
+                crashOnMarquiseErrors $ runAddTags broker origin addr tags
             Remove  origin addr tags ->
-                unMarquise $ runRemoveTags broker origin addr tags
+                crashOnMarquiseErrors $ runRemoveTags broker origin addr tags
             SourceCache cacheFile ->
-                Right <$> runSourceCache cacheFile
+                runSourceCache cacheFile
         putMVar quit ()
 
     takeMVar quit

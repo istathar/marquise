@@ -1,3 +1,6 @@
+# Generate marquise-${version}.tar.gz with `git archive
+# --prefix=marquise/ -o ../marquise-${version}.tar.gz ${tag}`.
+
 Name:	        marquised
 Version:	2.8.1
 Release:	0anchor1%{?dist}

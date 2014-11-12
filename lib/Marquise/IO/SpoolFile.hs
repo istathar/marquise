@@ -60,9 +60,11 @@ newRandomSpoolFile path = do
     hClose handle
     return spool_file
 
+-- | Creates and returns a new points spool file from a namespace
 newRandomPointsSpoolFile :: SpoolName -> IO FilePath
 newRandomPointsSpoolFile = newRandomSpoolFile . newPointsDir
 
+-- | Creates and returns a new contents spool file from a namespace
 newRandomContentsSpoolFile :: SpoolName -> IO FilePath
 newRandomContentsSpoolFile = newRandomSpoolFile . newContentsDir
 

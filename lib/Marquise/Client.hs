@@ -8,6 +8,8 @@ module Marquise.Client (
       hashIdentifier
     , makeSpoolName
     , makeOrigin
+    , newRandomPointsSpoolFile
+    , newRandomContentsSpoolFile
 
     -- | * Contents daemon requests
     , withContentsConnection
@@ -69,6 +71,7 @@ import qualified Pipes.Prelude as P
 import           Marquise.Client.Core hiding (enumerateOrigin, readSimplePoints, readExtendedPoints)
 import qualified Marquise.Client.Core as C
 import           Marquise.IO.Connection
+import           Marquise.IO.SpoolFile
 import           Marquise.IO ()
 import           Marquise.Classes
 import           Marquise.Types

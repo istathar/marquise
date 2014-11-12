@@ -10,7 +10,8 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Marquise.IO.SpoolFile
-(
+( newRandomPointsSpoolFile
+, newRandomContentsSpoolFile
 ) where
 
 import Control.Applicative
@@ -35,8 +36,8 @@ import System.Posix.Types (Fd)
 
 instance MarquiseSpoolFileMonad IO where
     randomSpoolFiles sn = catchTryIO_ $
-        SpoolFiles <$> newRandomSpoolFile (newPointsDir sn)
-                   <*> newRandomSpoolFile (newContentsDir sn)
+        SpoolFiles <$> newRandomPointsSpoolFile sn
+                   <*> newRandomContentsSpoolFile sn
 
     createDirectories sn = catchTryIO_ $
         mapM_ (createDirectoryIfMissing True . ($sn))
@@ -58,6 +59,14 @@ newRandomSpoolFile path = do
     (spool_file, handle) <- mkstemp path
     hClose handle
     return spool_file
+
+-- | Creates and returns a new points spool file from a namespace
+newRandomPointsSpoolFile :: SpoolName -> IO FilePath
+newRandomPointsSpoolFile = newRandomSpoolFile . newPointsDir
+
+-- | Creates and returns a new contents spool file from a namespace
+newRandomContentsSpoolFile :: SpoolName -> IO FilePath
+newRandomContentsSpoolFile = newRandomSpoolFile . newContentsDir
 
 -- | Grab the next avaliable spool file, providing that file as a lazy
 -- bytestring and an action to close it, wiping the file.

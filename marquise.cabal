@@ -43,7 +43,7 @@ library
                      either,
                      errors,
                      transformers-base,
-                     monad-control,
+                     monad-control < 1.0,
                      mmorph,
                      lifted-async,
                      containers,

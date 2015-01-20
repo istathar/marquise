@@ -26,7 +26,7 @@ Installation + Deployment
 -------------------------
 
 Marquise is not currently on hackage but has no special requirements for a
-Haskell package bar a system dependency on zeromq.
+Haskell package bar a system dependency on zeromq version >= 4.
 
 [haskell2package](https://github.com/anchor/haskell2package) can create a
 rpm for use with CentOS systems. Otherwise the recommended installation
@@ -37,8 +37,10 @@ method is with a cabal sandbox.
     E.g. for debian-like systems:
 
     ```
-    sudo apt-get install zeromq-devel
+    sudo apt-get install libzmq3-dev
     ```
+
+    Ensure the version installed is >= 4, regardless of the name of the package.
 
 2. Acquire and install dependencies and package from source.
     ```

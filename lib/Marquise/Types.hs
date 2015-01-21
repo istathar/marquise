@@ -163,22 +163,22 @@ instance MonadTrans Marquise where
   lift = Marquise . lift . lift
 
 instance MonadTransControl Marquise where
-  data StT Marquise a = StMarquise { unStMarquise :: (Either MarquiseErrorType a, ErrorState) }
+  type StT Marquise a = (Either MarquiseErrorType a, ErrorState)
   liftWith f = Marquise $ ErrorT $ StateT $ \s ->
     liftM (, s)                                                            -- rewrap state
           (liftM return                                                    -- rewrap error
-                 (f $ \t -> liftM StMarquise
+                 (f $ \t ->
                                   (runStateT (runErrorT $ marquise t) s))) -- unwrap error and state
-  restoreT = Marquise . ErrorT . StateT . const . liftM unStMarquise
+  restoreT = Marquise . ErrorT . StateT . const
   {-# INLINE liftWith #-}
   {-# INLINE restoreT #-}
 
 deriving instance MonadBase b m => MonadBase b (Marquise m)
 
 instance MonadBaseControl b m => MonadBaseControl b (Marquise m) where
-  newtype StM (Marquise m) a = StMMarquise { unStMMarquise :: ComposeSt Marquise m a}
-  liftBaseWith = defaultLiftBaseWith StMMarquise
-  restoreM     = defaultRestoreM   unStMMarquise
+  type StM (Marquise m) a = ComposeSt Marquise m a
+  liftBaseWith = defaultLiftBaseWith
+  restoreM     = defaultRestoreM
   {-# INLINE liftBaseWith #-}
   {-# INLINE restoreM #-}
 
@@ -195,7 +195,7 @@ logError = logErrorN . T.pack
 -- | Unwrap the insides of a @Marquise@ monad and keep them in the @StT@ from
 --   @monad-control@, so we need to @restoreT@ manually.
 unwrap :: Functor m => Marquise m a -> m (StT Marquise a)
-unwrap = fmap StMarquise . flip runStateT None . runErrorT . marquise
+unwrap = flip runStateT None . runErrorT . marquise
 
 unMarquise' :: Marquise m a -> m (Either MarquiseErrorType a, ErrorState)
 unMarquise' = flip runStateT None . runErrorT . marquise

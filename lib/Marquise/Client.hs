@@ -47,6 +47,8 @@ module Marquise.Client (
     , Address(..)
     , Origin(..)
     , TimeStamp(..)
+    , ExtendedBurst(..)
+    , ExtendedPoint(..)
     , SimpleBurst(..)
     , SimplePoint(..)
     , SocketState(..)

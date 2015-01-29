@@ -90,7 +90,7 @@ optionsParser = Options <$> parseBroker
     parseOrigin = argument str (metavar "ORIGIN")
 
 defaultCacheLoc :: String -> String
-defaultCacheLoc o = "/var/spool/marquise/source_dict_hash_cache_" ++ o
+defaultCacheLoc = (++) "/var/cache/marquise/source_dict_hash_cache_"
 
 main :: IO ()
 main = do

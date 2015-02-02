@@ -68,7 +68,7 @@ library
                      cryptohash,
                      zeromq4-haskell,
                      time,
-                     vaultaire-common >= 2.6.0
+                     vaultaire-common >= 2.8.3
 
   ghc-options:       -O2
                      -threaded
@@ -91,7 +91,7 @@ executable marquised
                      unix,
                      async,
                      containers,
-                     vaultaire-common >= 2.5.0,
+                     vaultaire-common >= 2.8.3,
                      marquise
 
   ghc-options:       -O2
@@ -116,11 +116,11 @@ executable data
                      text,
                      attoparsec,
                      unordered-containers,
-                     vaultaire-common >= 2.5.0,
                      time,
                      old-locale,
                      data-binary-ieee754,
                      packer,
+                     vaultaire-common >= 2.8.3,
                      marquise
 
   ghc-options:       -O2
@@ -162,7 +162,7 @@ test-suite           client-test
                      hspec,
                      bytestring,
                      pipes,
-                     vaultaire-common,
+                     vaultaire-common >= 2.8.3,
                      marquise
 
   ghc-options:       -O2

@@ -97,31 +97,6 @@ data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
                              , contentsSpoolFile :: FilePath }
   deriving (Eq, Show)
 
--- | SimplePoints are simply wrapped packets for Vaultaire
--- Each consists of 24 bytes:
--- An 8 byte Address
--- An 8 byte Timestamp (nanoseconds since Unix epoch)
--- An 8 byte Payload
-data SimplePoint = SimplePoint { simpleAddress :: Address
-                               , simpleTime    :: TimeStamp
-                               , simplePayload :: Word64 }
-  deriving (Show, Eq)
-
-
--- | ExtendedPoints are simply wrapped packets for Vaultaire
--- Each consists of 16 + 'length' bytes:
--- An 8 byte Address
--- An 8 byte Time (in nanoseconds since Unix epoch)
--- A 'length' byte Payload
--- On the wire their equivalent representation takes up
--- 24 + 'length' bytes with format:
--- 8 byte Address, 8 byte Time, 8 byte Length, Payload
-data ExtendedPoint = ExtendedPoint { extendedAddress :: Address
-                                   , extendedTime    :: TimeStamp
-                                   , extendedPayload :: ByteString }
-  deriving (Show, Eq)
-
-
 -- Result ----------------------------------------------------------------------
 
 -- | A resumption producer that yields @a@ and might return a continuation that can be

@@ -42,7 +42,7 @@ method is with a cabal sandbox.
 
     Ensure the version installed is >= 4, regardless of the name of the package.
 
-2. Acquire and install dependencies and package from source.
+1. Acquire and install dependencies and package from source.
     ```
     git clone git@github.com:anchor/vaultaire-common.git
     git clone git@github.com:anchor/marquise.git
@@ -52,4 +52,7 @@ method is with a cabal sandbox.
     cabal install --only-dependencies -j && cabal build
     ```
 
-3. Run. The executables will be `dist/build/marquised/marquised` and `dist/build/data/data`.
+1. For marquised: ensure relevant directories exist and are writeable by
+   the user `marquised` will run as: `/var/{spool,cache}/marquise`
+
+1. Run. The executables will be `dist/build/marquised/marquised` and `dist/build/data/data`.

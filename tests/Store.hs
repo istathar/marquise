@@ -1,8 +1,8 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
@@ -10,15 +10,16 @@
 module Store where
 
 import Control.Applicative
-import Control.Monad.State
+import Control.Lens hiding (op)
 import Control.Monad.Error
-import Control.Lens hiding (act, op)
+import Control.Monad.State
 import Data.Map (Map)
 import qualified Data.Map as M
+import Data.Monoid
 
-import Vaultaire.Types
-import Marquise.Types
 import Marquise.Classes
+import Marquise.Types
+import Vaultaire.Types
 
 
 data PureStore
@@ -49,12 +50,15 @@ instance MarquiseContentsMonad Store Name where
   sendContentsRequest op _ i = lift $ contentsConns %= M.insert i (op, 0)
 
   -- "receive" responses
-  recvContentsResponse i = do
+  recvContentsResponse i =
     lift (use contentsConns >>= return . M.lookup i)
     >>= maybe (throwError $ Other "no connection")
-              (\c -> case fst c of
-                ContentsListRequest ->  lift (use contents)
-                                    >>= go . drop (snd c))
+              (\c -> case c of
+                (ContentsListRequest, streamIx) ->
+                    lift (use contents) >>= go . drop streamIx
+                _                               ->
+                    throwError $ MalformedResponse None $
+                        "recvContentsResponse only expects ContentsListRequest, got: " <> show c)
     where go []              = return EndOfContentsList
           go (FakeError:_)   = get >>= throwError . Timeout
           go (Data (a,d):_)
@@ -68,14 +72,16 @@ instance MarquiseReaderMonad Store Name where
   recvReaderResponse i =
     lift (use pointsConns >>= return . M.lookup i)
     >>= maybe (throwError $ Other "no connection")
-              (\c -> case fst c of
-                SimpleReadRequest _ s e ->  lift (use points)
-                                        >>= go s e . drop (snd c))
+              (\c -> case c of
+                (SimpleReadRequest   _ s e, streamIx) ->
+                    lift (use points) >>= go s e . drop streamIx
+                (ExtendedReadRequest _ s e, streamIx) ->
+                    lift (use points) >>= go s e . drop streamIx)
     where go _ _ []            = return EndOfStream
           go _ _ (FakeError:_) = get >>= throwError . Timeout
           go s e (Data (burst, SimplePoint _ t _):xs)
             = let resp = SimpleStream burst
-              in  if   or [t < s, t >= e]
+              in  if   t < s || t >= e
                   then inc >> go s e xs
                   else inc >> return resp
           inc = lift $ pointsConns %= M.adjust (_2 +~ 1) i

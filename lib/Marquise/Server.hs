@@ -23,39 +23,39 @@ module Marquise.Server
 )
 where
 
-import           Control.Applicative
-import           Control.Concurrent (threadDelay)
-import           Control.Concurrent.Async
+import Control.Applicative
+import Control.Concurrent (threadDelay)
+import Control.Concurrent.Async
 import qualified Control.Concurrent.Async.Lifted as AL
-import           Control.Concurrent.MVar
-import           Control.Exception (throw)
-import           Control.Monad
-import           Control.Monad.Error
-import           Control.Monad.State.Lazy
-import           Data.Attoparsec.ByteString.Lazy (Parser)
-import           Data.Attoparsec.Combinator (eitherP)
+import Control.Concurrent.MVar
+import Control.Exception (throw)
+import Control.Monad
+import Control.Monad.Error
+import Control.Monad.State.Lazy
+import Data.Attoparsec.ByteString.Lazy (Parser)
+import Data.Attoparsec.Combinator (eitherP)
 import qualified Data.Attoparsec.Lazy as Parser
-import           Data.ByteString.Builder (Builder, byteString, toLazyByteString)
+import Data.ByteString.Builder (Builder, byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S
 import qualified Data.ByteString.Lazy as L
-import           Data.Maybe
-import           Data.Monoid
-import           Data.Packer
-import           Data.Time.Clock
-import           Pipes
-import           Pipes.Attoparsec (parsed)
+import Data.Maybe
+import Data.Monoid
+import Data.Packer
+import Data.Time.Clock
+import Pipes
+import Pipes.Attoparsec (parsed)
 import qualified Pipes.ByteString as PB
-import           Pipes.Group (FreeF (..), FreeT (..))
+import Pipes.Group (FreeF (..), FreeT (..))
 import qualified Pipes.Group as PG
-import qualified Pipes.Lift  as P
-import           System.IO
-import           System.Log.Logger
+import qualified Pipes.Lift as P
+import System.IO
+import System.Log.Logger
 
-import           Vaultaire.Types
-import           Marquise.Classes
-import           Marquise.Client (makeSpoolName, updateSourceDict)
-import           Marquise.Types
-import           Marquise.IO ()
+import Marquise.Classes
+import Marquise.Client (makeSpoolName, updateSourceDict)
+import Marquise.IO ()
+import Marquise.Types
+import Vaultaire.Types
 
 data ContentsRequest = ContentsRequest Address SourceDict
   deriving Show

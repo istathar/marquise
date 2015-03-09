@@ -23,32 +23,32 @@
 -- abstract.
 --
 
+{-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 
 module Marquise.Client.Core where
 
-import           Control.Applicative
-import           Control.Monad.Error
-import           Control.Monad.State
-import           Crypto.MAC.SipHash
-import           Data.Bits
-import           Data.ByteString (ByteString)
+import Control.Applicative
+import Control.Monad.Error
+import Control.Monad.State
+import Crypto.MAC.SipHash
+import Data.Bits
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
-import           Data.Char (isAlphaNum)
-import           Data.Packer
-import           Data.Word (Word64)
-import qualified Data.HashSet  as HS
-import           Pipes
+import Data.Char (isAlphaNum)
+import qualified Data.HashSet as HS
+import Data.Packer
+import Data.Word (Word64)
+import Pipes
 
-import           Marquise.Classes
-import           Marquise.Types
-import           Vaultaire.Types
+import Marquise.Classes
+import Marquise.Types
+import Vaultaire.Types
 
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.

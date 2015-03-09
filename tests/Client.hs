@@ -1,15 +1,15 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
+import Control.Monad.State
+import qualified Data.List as L
+import qualified Data.Map as M
+import Data.Maybe
+import Data.Monoid
 import Pipes
 import Pipes.Internal
 import qualified Pipes.Prelude as P
-import Control.Monad.State
-import Data.Maybe
-import Data.Monoid
 import Test.Hspec
-import qualified Data.Map as M
-import qualified Data.List as L
 
 import Marquise.Client
 import Marquise.Types

@@ -20,15 +20,15 @@ module Marquise.IO.Connection
     SocketState(..),
 ) where
 
-import           Control.Monad.Error
-import           Control.Monad.Trans.Control
-import           Control.Monad.State
-import           Data.List.NonEmpty (fromList)
-import           System.ZMQ4 (Socket, Poll(..), Event(..), Dealer(..))
+import Control.Monad.Error
+import Control.Monad.State
+import Control.Monad.Trans.Control
+import Data.List.NonEmpty (fromList)
+import System.ZMQ4 (Dealer (..), Event (..), Poll (..), Socket)
 import qualified System.ZMQ4 as Z
 
-import           Marquise.Types
-import           Vaultaire.Types
+import Marquise.Types
+import Vaultaire.Types
 
 -- | Wrapped ZMQ4 Socket + broker/IP
 data SocketState = SocketState (Socket Dealer) String
@@ -50,7 +50,7 @@ send :: WireFormat request
      -> SocketState
      -> Marquise IO ()
 send request (Origin origin) (SocketState sock _)
-  = do catchSyncIO_ ZMQException $ Z.sendMulti sock (fromList [origin, toWire request])
+  = catchSyncIO_ ZMQException $ Z.sendMulti sock (fromList [origin, toWire request])
 
 recv :: WireFormat response
      => SocketState
@@ -64,7 +64,7 @@ recv (SocketState sock endpoint) = do
       resp  <- catchSyncIO (ZMQException recover)
              $ Z.receiveMulti sock
       case resp of
-          [msg] -> either (throwError . (VaultaireException recover)) return $ fromWire msg
+          [msg] -> either (throwError . VaultaireException recover) return $ fromWire msg
           []    ->         throwError $ MalformedResponse recover "expected one message, received none"
           _     ->         throwError $ MalformedResponse recover "expected one message, received multiple"
     [[]] -> do
@@ -76,4 +76,4 @@ recv (SocketState sock endpoint) = do
         Z.connect sock endpoint
       throwError $ Timeout recover
     _    -> throwError $ Other "Marquise.IO.Connection.recv: impossible"
-  where timeout = 60000 -- milliseconds, 60s
+  where timeout = 30 * 60 * 1000 -- milliseconds, 30m

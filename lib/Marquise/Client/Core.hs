@@ -7,10 +7,10 @@
 -- the 3-clause BSD licence.
 --
 
--- | Marquise client interface for sending data to the vault.
+-- | client interface for sending data to the vault.
 --
 -- This module provides functions for preparing and queuing points to be sent
--- by a Marquise server to the vault.
+-- by a server to the vault.
 --
 -- If you call close, you can be assured that your data is safe and will at
 -- some point end up in the data vault (excluding local disk failure). This
@@ -23,7 +23,6 @@
 -- abstract.
 --
 
-{-# LANGUAGE DeriveFunctor         #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -35,33 +34,33 @@ module Marquise.Client.Core where
 
 import Control.Applicative
 import Control.Monad.Error
-import Control.Monad.State
 import Crypto.MAC.SipHash
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Char (isAlphaNum)
-import qualified Data.HashSet as HS
 import Data.Packer
 import Data.Word (Word64)
 import Pipes
+import qualified Control.Exception as E
 
 import Marquise.Classes
 import Marquise.Types
 import Vaultaire.Types
 
+
 -- | Create a SpoolName. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
-makeSpoolName :: Monad m => String -> Marquise m SpoolName
+makeSpoolName :: Monad m => String -> m SpoolName
 makeSpoolName s
-    | any (not . isAlphaNum) s = throwError $ InvalidSpoolName s
+    | any (not . isAlphaNum) s = E.throw $ MarquiseException s
     | otherwise                = return (SpoolName s)
 
 -- | Create a name in the spool. Only alphanumeric characters are allowed, max length
 -- is 32 characters.
 createSpoolFiles :: MarquiseSpoolFileMonad m
                  => String
-                 -> Marquise m SpoolFiles
+                 -> m SpoolFiles
 createSpoolFiles s = do
   n <- makeSpoolName s
   createDirectories n
@@ -84,7 +83,7 @@ hashIdentifier = Address . (`clearBit` 0) . unSipHash . hash iv
 requestUnique :: MarquiseContentsMonad m conn
                => Origin
                -> conn
-               -> Marquise m Address
+               -> m Address
 requestUnique origin conn =  do
     sendContentsRequest GenerateNewAddress origin conn
     response <- recvContentsResponse conn
@@ -98,7 +97,7 @@ updateSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> Marquise m ()
+                 -> m ()
 updateSourceDict addr source_dict origin conn =  do
     sendContentsRequest (UpdateSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
@@ -112,7 +111,7 @@ removeSourceDict :: MarquiseContentsMonad m conn
                  -> SourceDict
                  -> Origin
                  -> conn
-                 -> Marquise m ()
+                 -> m ()
 removeSourceDict addr source_dict origin conn = do
     sendContentsRequest (RemoveSourceTag addr source_dict) origin conn
     response <- recvContentsResponse conn
@@ -124,7 +123,7 @@ removeSourceDict addr source_dict origin conn = do
 enumerateOrigin :: MarquiseContentsMonad m conn
                 => Origin
                 -> conn
-                -> Producer (Address, SourceDict) (Marquise m) ()
+                -> Producer (Address, SourceDict) m ()
 enumerateOrigin origin conn = do
     lift $ sendContentsRequest ContentsListRequest origin conn
     loop
@@ -134,12 +133,6 @@ enumerateOrigin origin conn = do
         case resp of
             ContentsListEntry addr dict -> do
                 yield (addr, dict)
-                -- add the new address to this operation's error state
-                -- so it can be ignored if the operation is resumed.
-                lift $ get >>= \x -> case x of
-                  None         -> put $ EnumOrigin $ HS.singleton addr
-                  EnumOrigin s -> put $ EnumOrigin $ HS.insert addr s
-                  ReadPoints _ -> error "impossible!"
                 loop
             EndOfContentsList -> return ()
             _ -> error "enumerateOrigin loop: Invalid response"
@@ -151,7 +144,7 @@ readSimple :: MarquiseReaderMonad m conn
            -> TimeStamp
            -> Origin
            -> conn
-           -> Producer' SimpleBurst (Marquise m) ()
+           -> Producer' SimpleBurst m ()
 readSimple addr start end origin conn = do
     lift $ sendReaderRequest (SimpleReadRequest addr start end) origin conn
     loop
@@ -177,11 +170,9 @@ readSimplePoints
     -> TimeStamp
     -> Origin
     -> conn
-    -> Producer' SimplePoint (Marquise m) ()
+    -> Producer' SimplePoint m ()
 readSimplePoints addr start end origin conn
-    = for (readSimple addr start end origin conn >-> decodeSimple)
-          (\point -> do lift $ put $ ReadPoints $ simpleTime point
-                        yield point)
+    = for (readSimple addr start end origin conn >-> decodeSimple) yield
 
 -- | Stream read every ExtendedBurst from the Address between the given times
 readExtended :: MarquiseReaderMonad m conn
@@ -190,7 +181,7 @@ readExtended :: MarquiseReaderMonad m conn
              -> TimeStamp
              -> Origin
              -> conn
-             -> Producer' ExtendedBurst (Marquise m) ()
+             -> Producer' ExtendedBurst m ()
 readExtended addr start end origin conn = do
     lift $ sendReaderRequest (ExtendedReadRequest addr start end) origin conn
     loop
@@ -214,14 +205,12 @@ readExtendedPoints
     -> TimeStamp
     -> Origin
     -> conn
-    -> Producer' ExtendedPoint (Marquise m) ()
+    -> Producer' ExtendedPoint m ()
 readExtendedPoints addr start end origin conn
-    = for (readExtended addr start end origin conn >-> decodeExtended)
-          (\point -> do lift $ put $ ReadPoints $ extendedTime point
-                        yield point)
+    = for (readExtended addr start end origin conn >-> decodeExtended) yield
 
 -- | Stream converts raw SimpleBursts into SimplePoints
-decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint (Marquise m) ()
+decodeSimple :: Monad m => Pipe SimpleBurst SimplePoint m ()
 decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
   where
     emitFrom os chunk
@@ -271,7 +260,7 @@ queueSimple
     -> Address
     -> TimeStamp
     -> Word64
-    -> Marquise m ()
+    -> m ()
 queueSimple sfs (Address ad) (TimeStamp ts) w = appendPoints sfs bytes
   where
     bytes = runPacking 24 $ do
@@ -288,7 +277,7 @@ queueExtended
     -> Address
     -> TimeStamp
     -> ByteString
-    -> Marquise m ()
+    -> m ()
 queueExtended sfs (Address ad) (TimeStamp ts) bs = appendPoints sfs bytes
   where
     len = BS.length bs
@@ -304,7 +293,7 @@ queueSourceDictUpdate
     => SpoolFiles
     -> Address
     -> SourceDict
-    -> Marquise m ()
+    -> m ()
 queueSourceDictUpdate sfs (Address addr) source_dict = appendContents sfs bytes
   where
     source_dict_bytes = toWire source_dict
@@ -318,5 +307,5 @@ queueSourceDictUpdate sfs (Address addr) source_dict = appendContents sfs bytes
 flush
     :: MarquiseSpoolFileMonad m
     => SpoolFiles
-    -> Marquise m ()
+    -> m ()
 flush = close

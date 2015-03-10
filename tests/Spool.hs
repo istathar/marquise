@@ -9,8 +9,8 @@ import Test.Hspec
 -- we assume successes in this test, tests for failures (timeouts etc) need to be added
 
 ns1, ns2 :: Monad m => m SpoolName
-ns1 = withMarquiseHandler (error . show) $ makeSpoolName "ns1"
-ns2 = withMarquiseHandler (error . show) $ makeSpoolName "ns2"
+ns1 = makeSpoolName "ns1"
+ns2 = makeSpoolName "ns2"
 
 main :: IO ()
 main = hspec suite
@@ -19,7 +19,7 @@ suite :: Spec
 suite =
     describe "IO MarquiseClientMonad and MarquiseServerMonad" $
         it "reads appends, then cleans up when nextBurst is called" $ do
-            (bytes1, bytes2, contents) <- withMarquiseHandler (error . show) $ do
+            (bytes1, bytes2, contents) <- do
               sf1 <- createSpoolFiles "ns1"
               sf2 <- createSpoolFiles "ns2"
 
@@ -32,10 +32,9 @@ suite =
               (bytes2,close_f2)   <- loop (nextPoints =<< ns2)
               (contents,close_f3) <- loop (nextContents =<< ns1)
 
-              catchTryIO_ $ do
-                close_f1
-                close_f2
-                close_f3
+              do close_f1
+                 close_f2
+                 close_f3
 
               return (bytes1, bytes2, contents)
 

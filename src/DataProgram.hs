@@ -192,10 +192,10 @@ runPrintDate = do
     let time = formatTime defaultTimeLocale "%FT%TZ" now
     putStrLn time
 
-runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> Marquise IO ()
+runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> IO ()
 runReadPoints broker raw origin addr start end =
-    withReaderConnectionT broker $ \c ->
-        runEffect $   readSimplePoints (ForeverRetry $ 5 * 10^(6 :: Int)) addr start end origin c
+    withReaderConnection broker $ \c ->
+        runEffect $   readSimplePoints addr start end origin c
                   >-> P.map (displayPoint raw)
                   >-> P.print
 
@@ -234,12 +234,12 @@ displayPoint raw (SimplePoint address timestamp payload) =
             printf "% 17d" v
 
 
-runListContents :: String -> Origin -> Marquise IO ()
+runListContents :: String -> Origin -> IO ()
 runListContents broker origin =
-    withContentsConnectionT broker $ \c ->
-        runEffect $ enumerateOrigin (ForeverRetry $ 5 * 10^(6 :: Int)) origin c >-> P.print
+    withContentsConnection broker $ \c ->
+        runEffect $ enumerateOrigin origin c >-> P.print
 
-runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> Marquise IO ()
+runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> IO ()
 runAddTags    = run updateSourceDict
 runRemoveTags = run removeSourceDict
 
@@ -258,13 +258,13 @@ runSourceCache cacheFile = do
             ]
 
 run :: (MarquiseContentsMonad m connection, Functor m)
-    => (Address -> SourceDict -> Origin -> connection -> Marquise m a)
-    -> String -> Origin -> Address -> [(Text, Text)] -> Marquise m a
+    => (Address -> SourceDict -> Origin -> connection -> m a)
+    -> String -> Origin -> Address -> [(Text, Text)] -> m a
 run op broker origin addr sdPairs = do
   let dict = case makeSourceDict $ HT.fromList sdPairs of
                   Left e  -> error e
                   Right a -> a
-  withContentsConnectionT broker $ \c ->
+  withContentsConnection broker $ \c ->
         op addr dict origin c
 
 --
@@ -293,13 +293,13 @@ main = do
             Now ->
                 runPrintDate
             Read human origin addr start end ->
-                crashOnMarquiseErrors $ runReadPoints broker human origin addr start end
+                runReadPoints broker human origin addr start end
             List origin ->
-                crashOnMarquiseErrors $ runListContents broker origin
+                runListContents broker origin
             Add origin addr tags ->
-                crashOnMarquiseErrors $ runAddTags broker origin addr tags
+                runAddTags broker origin addr tags
             Remove  origin addr tags ->
-                crashOnMarquiseErrors $ runRemoveTags broker origin addr tags
+                runRemoveTags broker origin addr tags
             SourceCache cacheFile ->
                 runSourceCache cacheFile
         putMVar quit ()

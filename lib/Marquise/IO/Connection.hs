@@ -14,18 +14,15 @@
 
 module Marquise.IO.Connection
 (   withConnection,
-    withConnectionT,
     send,
     recv,
     SocketState(..),
 ) where
 
-import Control.Monad.Error
-import Control.Monad.State
-import Control.Monad.Trans.Control
 import Data.List.NonEmpty (fromList)
 import System.ZMQ4 (Dealer (..), Event (..), Poll (..), Socket)
 import qualified System.ZMQ4 as Z
+import qualified Control.Exception as E
 
 import Marquise.Types
 import Vaultaire.Types
@@ -41,39 +38,32 @@ withConnection broker f =
         Z.connect s broker
         f (SocketState s broker)
 
-withConnectionT :: String -> (SocketState -> Marquise IO a) -> Marquise IO a
-withConnectionT broker act = restoreT $ withConnection broker (unwrap . act)
-
 send :: WireFormat request
      => request
      -> Origin
      -> SocketState
-     -> Marquise IO ()
+     -> IO ()
 send request (Origin origin) (SocketState sock _)
-  = catchSyncIO_ ZMQException $ Z.sendMulti sock (fromList [origin, toWire request])
+  = Z.sendMulti sock (fromList [origin, toWire request])
 
 recv :: WireFormat response
      => SocketState
-     -> Marquise IO response
+     -> IO response
 recv (SocketState sock endpoint) = do
-  recover <- get
-  poll_result <- catchSyncIO (ZMQException recover)
-               $ Z.poll timeout [Sock sock [In] Nothing]
+  poll_result <- Z.poll timeout [Sock sock [In] Nothing]
   case poll_result of
     [[In]] -> do
-      resp  <- catchSyncIO (ZMQException recover)
-             $ Z.receiveMulti sock
+      resp  <- Z.receiveMulti sock
       case resp of
-          [msg] -> either (throwError . VaultaireException recover) return $ fromWire msg
-          []    ->         throwError $ MalformedResponse recover "expected one message, received none"
-          _     ->         throwError $ MalformedResponse recover "expected one message, received multiple"
+          [msg] -> either E.throw return $ fromWire msg
+          []    -> E.throw $ MarquiseException "expected one message, received none"
+          _     -> E.throw $ MarquiseException "expected one message, received multiple"
     [[]] -> do
       -- Timeout, reconnect the socket so that we can be sure that a late
       -- response on the current connection isn't confused with a
       -- response to a later request.
-      catchSyncIO (ZMQException recover) $ do
-        Z.disconnect sock endpoint
-        Z.connect sock endpoint
-      throwError $ Timeout recover
-    _    -> throwError $ Other "Marquise.IO.Connection.recv: impossible"
+      Z.disconnect sock endpoint
+      Z.connect sock endpoint
+      E.throw $ MarquiseException "timeout"
+    _    -> E.throw $ MarquiseException "Marquise.IO.Connection.recv: impossible"
   where timeout = 30 * 60 * 1000 -- milliseconds, 30m

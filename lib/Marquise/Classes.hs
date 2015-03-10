@@ -18,7 +18,6 @@ module Marquise.Classes
     MarquiseContentsMonad(..),
 ) where
 
-import Control.Monad.Trans.Control
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as LB
 
@@ -28,29 +27,29 @@ import Vaultaire.Types
 -- | This class is for convenience of testing. It encapsulates all IO
 -- interaction that the client and server will do.
 class Monad m => MarquiseSpoolFileMonad m where
-    randomSpoolFiles :: SpoolName -> Marquise m SpoolFiles
+    randomSpoolFiles :: SpoolName -> m SpoolFiles
 
-    createDirectories :: SpoolName -> Marquise m ()
+    createDirectories :: SpoolName -> m ()
 
     -- | Append to the spool file for points, i.e. data.
     --
     -- This append does not imply that the given data is synced to disk, just
     -- that it is queued to do so. This assumes no state, so any file handles
     -- must be stashed globally or re-opened and closed.
-    appendPoints :: SpoolFiles -> ByteString -> Marquise m ()
+    appendPoints :: SpoolFiles -> ByteString -> m ()
 
     -- | Append  to the spool file for contents updates, i.e. metadata.
-    appendContents :: SpoolFiles -> ByteString -> Marquise m ()
+    appendContents :: SpoolFiles -> ByteString -> m ()
 
     -- | Return an lazy bytestring and an IO action to signify that the burst
     -- has been completely sent.
     --
     -- May block until something is actually spooled up.
-    nextPoints :: SpoolName -> Marquise m (Maybe (LB.ByteString, m ()))
-    nextContents :: SpoolName -> Marquise m (Maybe (LB.ByteString, m ()))
+    nextPoints :: SpoolName -> m (Maybe (LB.ByteString, m ()))
+    nextContents :: SpoolName -> m (Maybe (LB.ByteString, m ()))
 
     -- | Close any open handles and flush all previously appended datum to disk
-    close :: SpoolFiles -> Marquise m ()
+    close :: SpoolFiles -> m ()
 
 -- | Monad encapsulating writer operations. Note there is an instance for IO
 -- in IO/Writer.hs
@@ -61,34 +60,18 @@ class Monad m => MarquiseWriterMonad m where
     transmitBytes :: String      -- ^ Broker address
                   -> Origin      -- ^ Origin
                   -> ByteString  -- ^ Bytes to send
-                  -> Marquise m ()
+                  -> m ()
 
 -- | Monad encapsulating reader operations. Note there is an instance for
 -- IO SocketState in IO/Contents.hs
 class Monad m => MarquiseContentsMonad m connection | m -> connection where
-    sendContentsRequest    :: ContentsOperation -> Origin -> connection -> Marquise m ()
-    recvContentsResponse   :: connection -> Marquise m ContentsResponse
-
-    -- | Establish connection and run an action.
+    sendContentsRequest    :: ContentsOperation -> Origin -> connection -> m ()
+    recvContentsResponse   :: connection -> m ContentsResponse
     withContentsConnection :: String -> (connection -> m a) -> m a
-
-    -- | Like @withContentsConnection@ but captures errors already wrapped in the continuation as well.
-    --   To control how to recover from layered errors, provide your own implementation.
-    withContentsConnectionT :: Functor m => String -> (connection -> Marquise m a) -> Marquise m a
-    withContentsConnectionT broker act
-      = restoreT $ withContentsConnection broker (unwrap . act)
 
 -- | Monad encapsulating reader operations. Note there is an instance for
 -- IO SocketState in IO/Reader.hs
 class Monad m => MarquiseReaderMonad m connection | m -> connection where
-    sendReaderRequest    :: ReadRequest -> Origin -> connection -> Marquise m ()
-    recvReaderResponse   :: connection -> Marquise m ReadStream
-
-    -- | Establish connection and run an action.
+    sendReaderRequest    :: ReadRequest -> Origin -> connection -> m ()
+    recvReaderResponse   :: connection -> m ReadStream
     withReaderConnection :: String -> (connection -> m a) -> m a
-
-    -- | Like @withReaderConnection@ but captures errors already wrapped in the continuation as well.
-    --   To control how to recover from layered errors, provide your own implementation.
-    withReaderConnectionT :: Functor m => String -> (connection -> Marquise m a) -> Marquise m a
-    withReaderConnectionT broker act
-      = restoreT $ withReaderConnection broker (unwrap . act)

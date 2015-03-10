@@ -19,10 +19,10 @@ module Marquise.IO.Connection
     SocketState(..),
 ) where
 
+import qualified Control.Exception as E
 import Data.List.NonEmpty (fromList)
 import System.ZMQ4 (Dealer (..), Event (..), Poll (..), Socket)
 import qualified System.ZMQ4 as Z
-import qualified Control.Exception as E
 
 import Marquise.Types
 import Vaultaire.Types

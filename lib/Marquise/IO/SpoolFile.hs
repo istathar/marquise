@@ -39,7 +39,7 @@ instance MarquiseSpoolFileMonad IO where
         SpoolFiles <$> newRandomPointsSpoolFile sn
                    <*> newRandomContentsSpoolFile sn
 
-    createDirectories sn = 
+    createDirectories sn =
         mapM_ (createDirectoryIfMissing True . ($sn))
               [ newPointsDir
               , newContentsDir

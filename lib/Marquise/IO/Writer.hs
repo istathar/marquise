@@ -33,4 +33,4 @@ instance MarquiseWriterMonad IO where
       ack <- recv c
       case ack of
         OnDisk             -> return ()
-        InvalidWriteOrigin -> E.throw $ MarquiseException "invalid origin" 
+        InvalidWriteOrigin -> E.throw $ MarquiseException "invalid origin"

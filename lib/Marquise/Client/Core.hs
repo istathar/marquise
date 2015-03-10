@@ -33,6 +33,7 @@
 module Marquise.Client.Core where
 
 import Control.Applicative
+import qualified Control.Exception as E
 import Control.Monad.Error
 import Crypto.MAC.SipHash
 import Data.Bits
@@ -42,7 +43,6 @@ import Data.Char (isAlphaNum)
 import Data.Packer
 import Data.Word (Word64)
 import Pipes
-import qualified Control.Exception as E
 
 import Marquise.Classes
 import Marquise.Types

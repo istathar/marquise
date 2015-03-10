@@ -51,7 +51,7 @@ module Marquise.Client (
     ) where
 
 import Marquise.Classes
-import Marquise.Client.Core 
+import Marquise.Client.Core
 import Marquise.IO ()
 import Marquise.IO.Connection
 import Marquise.IO.SpoolFile

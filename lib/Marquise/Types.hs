@@ -7,13 +7,13 @@
 -- the 3-clause BSD licence.
 --
 
+{-# LANGUAGE DeriveDataTypeable         #-}
 {-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE TupleSections              #-}
 {-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
 
 module Marquise.Types
     ( -- * Data
@@ -24,8 +24,8 @@ module Marquise.Types
     , MarquiseException(..)
     ) where
 
-import Data.Typeable
 import Control.Exception
+import Data.Typeable
 
 import Vaultaire.Types
 
@@ -40,8 +40,8 @@ newtype SpoolName = SpoolName { unSpoolName :: String }
 data SpoolFiles = SpoolFiles { pointsSpoolFile   :: FilePath
                              , contentsSpoolFile :: FilePath }
   deriving (Eq, Show)
-           
+
 newtype MarquiseException = MarquiseException String
   deriving (Show, Typeable)
 
-instance Exception MarquiseException 
+instance Exception MarquiseException

@@ -9,39 +9,39 @@
 -- the 3-clause BSD licence.
 --
 
-{-# LANGUAGE RankNTypes      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE DoAndIfThenElse   #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Main where
 
 import Control.Concurrent.MVar
+import qualified Data.Attoparsec.Text as PT
+import Data.Binary.IEEE754
+import qualified Data.ByteString.Char8 as S
+import qualified Data.HashMap.Strict as HT
 import Data.String
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Time
+import Data.Time.Clock.POSIX
+import Data.Word
 import Options.Applicative
 import Options.Applicative.Types
 import Pipes
 import qualified Pipes.Prelude as P
+import System.IO
 import System.Locale
 import System.Log.Logger
-import Data.Binary.IEEE754
-import Data.Text (Text)
-import Data.Time
-import Data.Word
-import qualified Data.Text             as T
-import Data.Time.Clock.POSIX
-import qualified Data.ByteString.Char8 as S
-import qualified Data.Attoparsec.Text  as PT
-import qualified Data.HashMap.Strict   as HT
-import System.IO
 import Text.Printf
 
+import Marquise.Classes
 import Marquise.Client
-import Marquise.Client ()
 import Package (package, version)
-import Vaultaire.Util
 import Vaultaire.Program
 import Vaultaire.Types
+import Vaultaire.Util
 
 --
 -- Component line option parsing
@@ -54,7 +54,7 @@ data Options = Options
 
 data Component =
                  Now
-               | Read { raw   :: Bool
+               | Read { raw     :: Bool
                       , origin  :: Origin
                       , address :: Address
                       , start   :: TimeStamp
@@ -64,8 +64,8 @@ data Component =
                      , addr   :: Address
                      , dict   :: [Tag] }
                | Remove  { origin :: Origin
-                     , addr   :: Address
-                     , dict   :: [Tag] }
+                     , addr       :: Address
+                     , dict       :: [Tag] }
                | SourceCache { cacheFile :: FilePath }
 
 type Tag = (Text, Text)
@@ -193,9 +193,9 @@ runPrintDate = do
     putStrLn time
 
 runReadPoints :: String -> Bool -> Origin -> Address -> TimeStamp -> TimeStamp -> Marquise IO ()
-runReadPoints broker raw origin addr start end = do
+runReadPoints broker raw origin addr start end =
     withReaderConnectionT broker $ \c ->
-        runEffect $   readSimplePoints ForeverRetry addr start end origin c
+        runEffect $   readSimplePoints (ForeverRetry $ 5 * 10^(6 :: Int)) addr start end origin c
                   >-> P.map (displayPoint raw)
                   >-> P.print
 
@@ -210,10 +210,10 @@ displayPoint raw (SimplePoint address timestamp payload) =
     formatTimestamp :: TimeStamp -> String
     formatTimestamp (TimeStamp t) =
       let
-        seconds = posixSecondsToUTCTime $ realToFrac $ (fromIntegral t / 1000000000 :: Rational)
+        seconds = posixSecondsToUTCTime $ realToFrac (fromIntegral t / 1000000000 :: Rational)
         iso8601 = formatTime defaultTimeLocale "%FT%T.%q" seconds
       in
-        (take 29 iso8601) ++ "Z"
+        take 29 iso8601 ++ "Z"
 
 {-
     Take a stab at differentiating between raw integers and encoded floats.
@@ -235,9 +235,9 @@ displayPoint raw (SimplePoint address timestamp payload) =
 
 
 runListContents :: String -> Origin -> Marquise IO ()
-runListContents broker origin = do
+runListContents broker origin =
     withContentsConnectionT broker $ \c ->
-        runEffect $ enumerateOrigin ForeverRetry origin c >-> P.print
+        runEffect $ enumerateOrigin (ForeverRetry $ 5 * 10^(6 :: Int)) origin c >-> P.print
 
 runAddTags, runRemoveTags :: String -> Origin -> Address -> [Tag] -> Marquise IO ()
 runAddTags    = run updateSourceDict
@@ -257,8 +257,11 @@ runSourceCache cacheFile = do
             , " entries."
             ]
 
-run op broker origin addr ts = do
-  let dict = case makeSourceDict $ HT.fromList ts of
+run :: (MarquiseContentsMonad m connection, Functor m)
+    => (Address -> SourceDict -> Origin -> connection -> Marquise m a)
+    -> String -> Origin -> Address -> [(Text, Text)] -> Marquise m a
+run op broker origin addr sdPairs = do
+  let dict = case makeSourceDict $ HT.fromList sdPairs of
                   Left e  -> error e
                   Right a -> a
   withContentsConnectionT broker $ \c ->

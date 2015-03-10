@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 -- Hide warnings for the deprecated ErrorT transformer:
 {-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
@@ -65,49 +66,69 @@ module Marquise.Client (
     , runMarquise
     ) where
 
-import           Control.Monad.Error hiding (forever)
-import qualified Data.HashSet  as HS
-import           Pipes
+import Control.Concurrent
+import Control.Monad.Error
+import qualified Data.HashSet as HS
+import Pipes
 import qualified Pipes.Prelude as P
 
-import           Marquise.Client.Core hiding (enumerateOrigin, readSimplePoints, readExtendedPoints)
+import Marquise.Classes
+import Marquise.Client.Core hiding (enumerateOrigin, readExtendedPoints,
+                             readSimplePoints)
 import qualified Marquise.Client.Core as C
-import           Marquise.IO.Connection
-import           Marquise.IO.SpoolFile
-import           Marquise.IO ()
-import           Marquise.Classes
-import           Marquise.Types
-import           Vaultaire.Types
+import Marquise.IO ()
+import Marquise.IO.Connection
+import Marquise.IO.SpoolFile
+import Marquise.Types
+import Vaultaire.Types
 
 
 -- | Retry policies
 --   *NOTE* retries will re-use the same connection (e.g. socket) of the failed query.
 --          to use a new connection, use the @*Resume@ functions directly.
---
-data Policy = NoRetry | ForeverRetry | JustRetry Int
+--          Delays are in microseconds
+data Policy = NoRetry
+            | ForeverRetry Int
+            | JustRetry Int Int
 
-forever :: Monad m => conn -> Result a m conn -> Producer a m ()
-forever conn act = _result act >>= maybe (return ()) (forever conn . ($conn))
+tryForever :: MonadIO m => conn -> Int -> Result a m conn -> Producer a m ()
+tryForever conn t (Result p) = do
+    r <- p
+    case r of
+        -- Complete query, we're done
+        Nothing -> return ()
+        -- Incomplete query, resume
+        Just k  -> do
+            liftIO $ threadDelay t
+            tryForever conn t (k conn)
 
-retry :: Monad m => conn -> Int -> Result a m conn -> Producer a m ()
-retry _    0 act = _result act >>  return ()
-retry conn n act = _result act >>= maybe (return ()) (retry conn (n-1) . ($conn))
+retry :: MonadIO m => conn -> Int -> Int -> Result a m conn -> Producer a m ()
+retry _    0 _ (Result p) = void p
+retry conn n t (Result p) = do
+    r <- p
+    case r of
+        -- Complete query, we're done
+        Nothing -> return ()
+        -- Incomplete query, resume
+        Just k -> do
+            liftIO $ threadDelay t
+            retry conn (n-1) t (k conn)
 
 -- | Stream read every Address associated with the given Origin
 enumerateOrigin
-  :: MarquiseContentsMonad m conn
+  :: (MarquiseContentsMonad m conn, MonadIO m)
   => Policy
   -> Origin
   -> conn
   -> Producer (Address, SourceDict) (Marquise m) ()
 enumerateOrigin pol org conn = case pol of
-  NoRetry      ->                C.enumerateOrigin org conn
-  ForeverRetry -> forever conn $   enumerateOriginResume org conn
-  JustRetry n  -> retry conn n $   enumerateOriginResume org conn
+  NoRetry        ->                     C.enumerateOrigin       org conn
+  ForeverRetry t -> tryForever conn t $   enumerateOriginResume org conn
+  JustRetry n  t -> retry    conn n t $   enumerateOriginResume org conn
 
 -- | Stream read every SimplePoint from the Address between the given times
 readSimplePoints
-   :: MarquiseReaderMonad m conn
+   :: (MarquiseReaderMonad m conn, MonadIO m)
    => Policy
    -> Address
    -> TimeStamp
@@ -116,13 +137,13 @@ readSimplePoints
    -> conn
    -> Producer SimplePoint (Marquise m) ()
 readSimplePoints pol addr start end origin conn = case pol of
-  NoRetry      ->                C.readSimplePoints       addr start end origin conn
-  ForeverRetry -> forever conn $   readSimplePointsResume addr start end origin conn
-  JustRetry n  -> retry conn n $   readSimplePointsResume addr start end origin conn
+  NoRetry        ->                     C.readSimplePoints       addr start end origin conn
+  ForeverRetry t -> tryForever conn t $   readSimplePointsResume addr start end origin conn
+  JustRetry n  t -> retry    conn n t $   readSimplePointsResume addr start end origin conn
 
 -- | Stream read every ExtendedPoint from the Address between the given times
 readExtendedPoints
-   :: MarquiseReaderMonad m conn
+   :: (MarquiseReaderMonad m conn, MonadIO m)
    => Policy
    -> Address
    -> TimeStamp
@@ -131,9 +152,9 @@ readExtendedPoints
    -> conn
    -> Producer ExtendedPoint (Marquise m) ()
 readExtendedPoints pol addr start end origin conn = case pol of
-  NoRetry      ->                C.readExtendedPoints       addr start end origin conn
-  ForeverRetry -> forever conn $   readExtendedPointsResume addr start end origin conn
-  JustRetry n  -> retry conn n $   readExtendedPointsResume addr start end origin conn
+  NoRetry        ->                     C.readExtendedPoints       addr start end origin conn
+  ForeverRetry t -> tryForever conn t $   readExtendedPointsResume addr start end origin conn
+  JustRetry n  t -> retry    conn n t $   readExtendedPointsResume addr start end origin conn
 
 -- Resume ----------------------------------------------------------------------
 

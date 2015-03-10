@@ -7,19 +7,18 @@
 -- the 3-clause BSD licence.
 --
 
-{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE DeriveFunctor              #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TupleSections #-}
-{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE TypeFamilies               #-}
 
 -- Our Base/BaseControl instances are simple enough to assert that
 -- that they are decidable, monad-control needs this too.
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableInstances       #-}
 
 {-# OPTIONS_HADDOCK hide, prune #-}
 
@@ -60,30 +59,28 @@ module Marquise.Types
     , logInfo, logError
 ) where
 
-import           Control.Applicative
-import           Control.Monad.Base
-import           Control.Monad.Error
-import           Control.Monad.Morph
-import           Control.Monad.Logger hiding (logInfo, logError)
-import           Control.Monad.Trans.Control
-import           Control.Monad.Trans.Either
-import           Control.Monad.Trans.State.Strict
-import           Control.Monad.State.Strict
-import           Control.Error.Util
-import           Control.Exception (IOException, SomeException)
-import           Data.HashSet (HashSet)
-import qualified Data.HashSet as HS
-import qualified Data.Text    as T
-import           Data.Either.Combinators
-import           Data.ByteString (ByteString)
+import Control.Applicative
+import Control.Error.Util
+import Control.Exception (IOException, SomeException)
+import Control.Monad.Base
+import Control.Monad.Error
+import Control.Monad.Logger hiding (logError, logInfo)
+import Control.Monad.Morph
+import Control.Monad.State.Strict
+import Control.Monad.Trans.Control
+import Control.Monad.Trans.Either
+import Control.Monad.Trans.State.Strict
 import qualified Data.ByteString.Char8 as B8
-import           Data.Word (Word64)
-import           Pipes
+import Data.Either.Combinators
+import Data.HashSet (HashSet)
+import qualified Data.HashSet as HS
+import qualified Data.Text as T
+import Pipes
 import qualified Pipes.Lift as P
-import qualified System.IO  as IO
-import           System.Log.FastLogger
+import qualified System.IO as IO
+import System.Log.FastLogger
 
-import           Vaultaire.Types
+import Vaultaire.Types
 
 
 -- | A NameSpace implies a certain amount of Marquise server-side state. This

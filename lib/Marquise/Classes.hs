@@ -20,7 +20,7 @@ module Marquise.Classes
 
 import Control.Monad.Trans.Control
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Lazy     as LB
+import qualified Data.ByteString.Lazy as LB
 
 import Marquise.Types
 import Vaultaire.Types

@@ -82,6 +82,7 @@ library
                      vaultaire-common >= 2.8.3
 
   ghc-options:       -Wall
+                     -O2
                      -Wwarn
                      -fwarn-tabs
 
@@ -104,6 +105,7 @@ executable marquised
                      marquise
 
   ghc-options:       -threaded
+                     -O2
                      -Wall
                      -Wwarn
                      -fwarn-tabs
@@ -132,6 +134,7 @@ executable data
                      marquise
 
   ghc-options:       -threaded
+                     -O2
                      -Wall
                      -Wwarn
                      -fwarn-tabs
@@ -150,6 +153,7 @@ test-suite           spool-test
                      marquise
 
   ghc-options:       -threaded
+                     -O2
                      -Wall
                      -Wwarn
                      -fwarn-tabs

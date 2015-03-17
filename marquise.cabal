@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             3.3.1
+version:             4.0.0
 synopsis:            Client library for Vaultaire
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
@@ -140,29 +140,6 @@ test-suite           spool-test
   build-depends:     base >=3 && <5,
                      hspec,
                      bytestring,
-                     marquise
-
-  ghc-options:       -O2
-                     -threaded
-                     -Wall
-                     -Wwarn
-                     -fwarn-tabs
-
-test-suite           client-test
-  hs-source-dirs:    tests
-  main-is:           Client.hs
-  type:              exitcode-stdio-1.0
-  default-language:  Haskell2010
-
-  build-depends:     base >=3 && <5,
-                     mtl,
-                     transformers,
-                     containers,
-                     lens,
-                     hspec,
-                     bytestring,
-                     pipes,
-                     vaultaire-common >= 2.8.3,
                      marquise
 
   ghc-options:       -O2

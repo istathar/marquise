@@ -17,8 +17,8 @@ import Control.Concurrent.Async
 import qualified Data.ByteString.Char8 as S
 import Data.Monoid
 import Options.Applicative hiding (Parser, option)
-import Options.Applicative.Types
 import qualified Options.Applicative as O
+import Options.Applicative.Types
 import System.Log.Logger
 
 import Marquise.Client

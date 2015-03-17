@@ -19,7 +19,7 @@ module Marquise.IO.Writer
 (
 ) where
 
-import Control.Monad.Error
+import qualified Control.Exception as E
 
 import Marquise.Classes
 import Marquise.IO.Connection
@@ -28,9 +28,9 @@ import Vaultaire.Types
 
 instance MarquiseWriterMonad IO where
   transmitBytes broker origin bytes =
-    withConnectionT ("tcp://" ++ broker ++ ":5560") $ \c -> do
+    withConnection ("tcp://" ++ broker ++ ":5560") $ \c -> do
       send (PassThrough bytes) origin c
       ack <- recv c
       case ack of
         OnDisk             -> return ()
-        InvalidWriteOrigin -> throwError $ InvalidOrigin origin
+        InvalidWriteOrigin -> E.throw $ MarquiseException "invalid origin"

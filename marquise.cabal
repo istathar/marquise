@@ -1,7 +1,18 @@
 cabal-version:       >= 1.10
 name:                marquise
 version:             4.0.0
+license-file:        LICENCE
 synopsis:            Client library for Vaultaire
+description:         Marquise is a collection of a library and two executables for use with Vaultaire.
+
+                     * A client and server library for reading/writing to the vault and spool files.
+                       This provides streaming reads and writes to the vault using
+                       [pipes](https://hackage.haskell.org/package/pipes) as well as writing to spool
+                       files with automatic caching and rotation.
+                     * An executable `marquised`, a daemon which writes data to the vault from spool
+                       files generated from users of the marquise library.
+                     * An executable `data`, used for easily inspecting data in the vault as well as
+                       marquise cache files.
 license:             BSD3
 author:              Anchor Engineering <engineering@anchor.com.au>
 maintainer:          Anchor Engineering <engineering@anchor.com.au>
@@ -70,9 +81,7 @@ library
                      time,
                      vaultaire-common >= 2.8.3
 
-  ghc-options:       -O2
-                     -threaded
-                     -Wall
+  ghc-options:       -Wall
                      -Wwarn
                      -fwarn-tabs
 
@@ -94,8 +103,7 @@ executable marquised
                      vaultaire-common >= 2.8.3,
                      marquise
 
-  ghc-options:       -O2
-                     -threaded
+  ghc-options:       -threaded
                      -Wall
                      -Wwarn
                      -fwarn-tabs
@@ -123,8 +131,7 @@ executable data
                      vaultaire-common >= 2.8.3,
                      marquise
 
-  ghc-options:       -O2
-                     -threaded
+  ghc-options:       -threaded
                      -Wall
                      -Wwarn
                      -fwarn-tabs
@@ -142,8 +149,7 @@ test-suite           spool-test
                      bytestring,
                      marquise
 
-  ghc-options:       -O2
-                     -threaded
+  ghc-options:       -threaded
                      -Wall
                      -Wwarn
                      -fwarn-tabs

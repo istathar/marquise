@@ -54,7 +54,7 @@ library
                      monad-logger,
                      fast-logger,
                      either,
-                     errors,
+                     errors < 2.0,
                      transformers-base,
                      monad-control,
                      mmorph,

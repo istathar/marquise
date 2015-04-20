@@ -35,6 +35,7 @@ withConnection :: String -> (SocketState -> IO a) -> IO a
 withConnection broker f =
     Z.withContext $ \ctx ->
     Z.withSocket ctx Dealer $ \s -> do
+        setIntOpt s receiveTimeout timeout
         Z.connect s broker
         f (SocketState s broker)
 

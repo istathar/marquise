@@ -20,7 +20,9 @@ module Marquise.IO.Connection
 ) where
 
 import qualified Control.Exception as E
+import Data.Int
 import Data.List.NonEmpty (fromList)
+import Data.Maybe
 import System.ZMQ4 (Dealer (..), Event (..), Poll (..), Socket)
 import qualified System.ZMQ4 as Z
 
@@ -35,8 +37,13 @@ withConnection :: String -> (SocketState -> IO a) -> IO a
 withConnection broker f =
     Z.withContext $ \ctx ->
     Z.withSocket ctx Dealer $ \s -> do
+        Z.setReceiveTimeout timeout' s
         Z.connect s broker
         f (SocketState s broker)
+  where
+    -- zeromq-haskell has its own 'Restricted' type ensuring the timeout
+    -- is non-negative.
+    timeout' = fromJust $ Z.toRestricted timeout
 
 send :: WireFormat request
      => request
@@ -50,7 +57,7 @@ recv :: WireFormat response
      => SocketState
      -> IO response
 recv (SocketState sock endpoint) = do
-  poll_result <- Z.poll timeout [Sock sock [In] Nothing]
+  poll_result <- Z.poll (fromIntegral timeout) [Sock sock [In] Nothing]
   case poll_result of
     [[In]] -> do
       resp  <- Z.receiveMulti sock
@@ -66,4 +73,8 @@ recv (SocketState sock endpoint) = do
       Z.connect sock endpoint
       E.throw $ MarquiseException "timeout"
     _    -> E.throw $ MarquiseException "Marquise.IO.Connection.recv: impossible"
-  where timeout = 30 * 60 * 1000 -- milliseconds, 30m
+
+
+-- | Timeout in milliseconds for ZeroMQ poll and recv.
+timeout :: Int
+timeout = 60 * 1000 -- milliseconds, one minute

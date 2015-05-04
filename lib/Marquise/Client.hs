@@ -35,6 +35,7 @@ module Marquise.Client (
     , readSimplePoints
     , decodeExtended
     , decodeSimple
+    , decodeSimple'
 
     -- * Types
     , SourceDict

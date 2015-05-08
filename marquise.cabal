@@ -1,6 +1,6 @@
 cabal-version:       >= 1.10
 name:                marquise
-version:             4.0.1
+version:             4.1.0
 license-file:        LICENCE
 synopsis:            Client library for Vaultaire
 description:         Marquise is a collection of a library and two executables for use with Vaultaire.

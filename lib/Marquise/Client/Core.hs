@@ -216,15 +216,17 @@ decodeSimple = forever (unSimpleBurst <$> await >>= emitFrom 0)
     emitFrom os chunk
         | os >= BS.length chunk = return ()
         | otherwise = do
-            yield $ flip runUnpacking chunk $ do
-                unpackSetPosition os
-                addr <- Address <$> getWord64LE
-                time <- TimeStamp <$> getWord64LE
-                payload <- getWord64LE
-                return $ SimplePoint addr time payload
-
+            yield $ decodeSimple' os chunk
             emitFrom (os + 24) chunk
 
+-- | Decodes a single point at an offset.
+decodeSimple' :: Int -> ByteString -> SimplePoint
+decodeSimple' offset chunk = flip runUnpacking chunk $ do
+    unpackSetPosition offset
+    addr <- Address <$> getWord64LE
+    time <- TimeStamp <$> getWord64LE
+    payload <- getWord64LE
+    return $ SimplePoint addr time payload
 
 -- | Stream converts raw ExtendedBursts into ExtendedPoints
 decodeExtended :: Monad m => Pipe ExtendedBurst ExtendedPoint m ()

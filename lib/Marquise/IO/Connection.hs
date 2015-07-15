@@ -38,6 +38,7 @@ withConnection broker f =
     Z.withContext $ \ctx ->
     Z.withSocket ctx Dealer $ \s -> do
         Z.setReceiveTimeout timeout' s
+        Z.setSendTimeout timeout' s
         Z.connect s broker
         f (SocketState s broker)
   where

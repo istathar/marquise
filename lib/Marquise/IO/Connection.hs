@@ -20,7 +20,6 @@ module Marquise.IO.Connection
 ) where
 
 import qualified Control.Exception as E
-import Data.Int
 import Data.List.NonEmpty (fromList)
 import Data.Maybe
 import System.ZMQ4 (Dealer (..), Event (..), Poll (..), Socket)

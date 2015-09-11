@@ -77,4 +77,4 @@ recv (SocketState sock endpoint) = do
 
 -- | Timeout in milliseconds for ZeroMQ poll and recv.
 timeout :: Int
-timeout = 60 * 1000 -- milliseconds, one minute
+timeout = 10 * 60 * 1000 -- milliseconds, ten minutes
